@@ -1,0 +1,160 @@
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.metric-card {
+    background: #fff;
+    border: 1px solid #e3e6ec;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.metric-card.metric-warn {
+    border-color: #f0c674;
+    background: #fff8e8;
+}
+
+.metric-label {
+    font-size: 0.8rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.4rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.metric-sub {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+.quick-add {
+    background: #f8f9fb;
+    border: 1px solid #e3e6ec;
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.quick-add h3 {
+    font-size: 0.95rem;
+    margin: 0 0 0.6rem 0;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.kbd {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    padding: 1px 6px;
+    background: #fff;
+    border: 1px solid #cbd1d8;
+    border-radius: 4px;
+    color: #6b7280;
+}
+
+.quick-add-row {
+    display: grid;
+    grid-template-columns: 1.2fr 1.2fr 1.5fr 1fr auto;
+    gap: 0.5rem;
+}
+
+.jobs-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.search-input { max-width: 320px; }
+
+.muted { color: #6b7280; font-size: 0.875rem; }
+
+.jobs-table {
+    width: 100%;
+    background: #fff;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid #e3e6ec;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.jobs-table th {
+    background: #f8f9fb;
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #4b5563;
+    border-bottom: 1px solid #e3e6ec;
+}
+
+.jobs-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #f0f2f6;
+    vertical-align: middle;
+}
+
+.jobs-table tr:last-child td { border-bottom: none; }
+
+.row-overdue { background: #fff5f5; }
+.row-overdue td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+
+.empty {
+    text-align: center;
+    padding: 2rem;
+    color: #9ca3af;
+}
+
+.status-select {
+    min-width: 160px;
+    font-size: 0.85rem;
+}
+
+.status-saved          { background: #f3f4f6; }
+.status-applied        { background: #dbeafe; }
+.status-recruitermessaged { background: #fef3c7; }
+.status-interview      { background: #ddd6fe; }
+.status-offer          { background: #d1fae5; }
+.status-rejected       { background: #fee2e2; color: #7f1d1d; }
+.status-withdrawn      { background: #e5e7eb; color: #6b7280; }
+
+.actions { white-space: nowrap; }
+.actions .btn { padding: 2px 6px; font-size: 0.85rem; }
+
+.edit-row td { background: #fafbfc; padding: 1rem; }
+
+.edit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+.edit-grid label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.85rem;
+    color: #4b5563;
+    gap: 0.25rem;
+}
+
+.edit-grid label.full { grid-column: 1 / -1; }
+
+.edit-actions {
+    margin-top: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+}

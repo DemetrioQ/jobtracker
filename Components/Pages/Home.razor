@@ -1,0 +1,391 @@
+@page "/"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using jobtracker.Data
+
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+
+<PageTitle>Job Tracker</PageTitle>
+
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-label">Applied this week</div>
+        <div class="metric-value">@_appliedThisWeek</div>
+    </div>
+    <div class="metric-card @(_overdueFollowUps > 0 ? "metric-warn" : "")">
+        <div class="metric-label">Pending follow-ups</div>
+        <div class="metric-value">@_pendingFollowUps</div>
+        @if (_overdueFollowUps > 0)
+        {
+            <div class="metric-sub">@_overdueFollowUps overdue</div>
+        }
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Response rate</div>
+        <div class="metric-value">@_responseRate%</div>
+        <div class="metric-sub">@_respondedCount of @_appliedCount</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Interviews</div>
+        <div class="metric-value">@_interviewCount</div>
+    </div>
+</div>
+
+<div class="quick-add">
+    <h3>Quick add <span class="kbd">N</span></h3>
+    <div class="quick-add-row">
+        <input @ref="_quickCompanyRef" @bind="_qCompany" @bind:event="oninput" placeholder="Company" class="form-control" @onkeydown="QuickAddKey" />
+        <input @bind="_qTitle" @bind:event="oninput" placeholder="Title" class="form-control" @onkeydown="QuickAddKey" />
+        <input @bind="_qUrl" @bind:event="oninput" placeholder="URL (optional)" class="form-control" @onkeydown="QuickAddKey" />
+        <select @bind="_qStatus" class="form-select status-select">
+            @foreach (var s in Enum.GetValues<JobStatus>())
+            {
+                <option value="@s">@FormatStatus(s)</option>
+            }
+        </select>
+        <button class="btn btn-primary" @onclick="QuickAdd" disabled="@(string.IsNullOrWhiteSpace(_qCompany) || string.IsNullOrWhiteSpace(_qTitle))">
+            Add
+        </button>
+    </div>
+</div>
+
+<div class="jobs-toolbar">
+    <input @bind="_search" @bind:event="oninput" placeholder="Search company / title…" class="form-control search-input" />
+    <select @bind="_filterStatus" class="form-select">
+        <option value="">All statuses</option>
+        @foreach (var s in Enum.GetValues<JobStatus>())
+        {
+            <option value="@s">@FormatStatus(s)</option>
+        }
+    </select>
+    <span class="muted">@FilteredJobs.Count() of @_jobs.Count</span>
+</div>
+
+<table class="jobs-table">
+    <thead>
+        <tr>
+            <th>Company</th>
+            <th>Title</th>
+            <th>Location</th>
+            <th>Applied</th>
+            <th>Status</th>
+            <th>Follow-up</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (!FilteredJobs.Any())
+        {
+            <tr><td colspan="7" class="empty">No jobs yet — add one above.</td></tr>
+        }
+        else
+        {
+            @foreach (var job in FilteredJobs)
+            {
+                <tr class="@RowClass(job)">
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(job.Url))
+                        {
+                            <a href="@job.Url" target="_blank" rel="noopener">@job.Company</a>
+                        }
+                        else
+                        {
+                            @job.Company
+                        }
+                    </td>
+                    <td>@job.Title</td>
+                    <td class="muted">@(job.Location ?? "—")</td>
+                    <td class="muted">@(job.DateApplied?.ToString("MMM d") ?? "—")</td>
+                    <td>
+                        <select class="form-select status-select status-@job.Status.ToString().ToLower()"
+                                value="@job.Status"
+                                @onchange="e => OnStatusChanged(job, e)">
+                            @foreach (var s in Enum.GetValues<JobStatus>())
+                            {
+                                <option value="@s">@FormatStatus(s)</option>
+                            }
+                        </select>
+                    </td>
+                    <td>
+                        <input type="date" class="form-control"
+                               value="@(job.FollowUpDate?.ToString("yyyy-MM-dd"))"
+                               @onchange="e => OnFollowUpChanged(job, e)" />
+                    </td>
+                    <td class="actions">
+                        <button class="btn btn-sm btn-link" title="Snooze 7 days" @onclick="() => SnoozeFollowUp(job, 7)">+7d</button>
+                        <button class="btn btn-sm btn-link" @onclick="() => Edit(job)">Edit</button>
+                        <button class="btn btn-sm btn-link text-danger" @onclick="() => Delete(job)">Delete</button>
+                    </td>
+                </tr>
+                @if (_editingId == job.Id)
+                {
+                    <tr class="edit-row">
+                        <td colspan="7">
+                            <div class="edit-grid">
+                                <label>Location <input @bind="_editJob!.Location" class="form-control" /></label>
+                                <label>Salary <input @bind="_editJob!.Salary" class="form-control" /></label>
+                                <label>URL <input @bind="_editJob!.Url" class="form-control" /></label>
+                                <label>Recruiter <input @bind="_editJob!.RecruiterName" class="form-control" /></label>
+                                <label>Recruiter email <input @bind="_editJob!.RecruiterEmail" class="form-control" /></label>
+                                <label>Interview date <input type="date" @bind="_editInterviewDate" class="form-control" /></label>
+                                <label>Date applied <input type="date" @bind="_editAppliedDate" class="form-control" /></label>
+                                <label class="full">Notes <textarea @bind="_editJob!.Notes" class="form-control" rows="3"></textarea></label>
+                            </div>
+                            <div class="edit-actions">
+                                <button class="btn btn-primary" @onclick="SaveEdit">Save</button>
+                                <button class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        }
+    </tbody>
+</table>
+
+@code {
+    private string? _userId;
+    private List<Job> _jobs = new();
+
+    // Quick-add fields
+    private ElementReference _quickCompanyRef;
+    private string _qCompany = "";
+    private string _qTitle = "";
+    private string _qUrl = "";
+    private JobStatus _qStatus = JobStatus.Applied;
+
+    // Search / filter
+    private string _search = "";
+    private string _filterStatus = "";
+
+    // Inline edit
+    private int? _editingId;
+    private Job? _editJob;
+    private DateTime? _editInterviewDate;
+    private DateTime? _editAppliedDate;
+
+    // Metrics
+    private int _appliedThisWeek;
+    private int _pendingFollowUps;
+    private int _overdueFollowUps;
+    private int _appliedCount;
+    private int _respondedCount;
+    private int _responseRate;
+    private int _interviewCount;
+
+    private DotNetObjectReference<Home>? _selfRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (_userId is null) return;
+        await LoadJobs();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("jobtracker.bindShortcuts", _selfRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task FocusQuickAdd()
+    {
+        await _quickCompanyRef.FocusAsync();
+    }
+
+    private async Task LoadJobs()
+    {
+        _jobs = await Db.Jobs
+            .AsNoTracking()
+            .Where(j => j.UserId == _userId)
+            .OrderByDescending(j => j.UpdatedAt)
+            .ToListAsync();
+        ComputeMetrics();
+    }
+
+    private void ComputeMetrics()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var weekAgo = today.AddDays(-7);
+
+        _appliedThisWeek = _jobs.Count(j => j.DateApplied.HasValue && j.DateApplied >= weekAgo);
+        _pendingFollowUps = _jobs.Count(j => j.FollowUpDate.HasValue
+            && j.Status != JobStatus.Rejected && j.Status != JobStatus.Offer && j.Status != JobStatus.Withdrawn);
+        _overdueFollowUps = _jobs.Count(j => j.FollowUpDate.HasValue && j.FollowUpDate < today
+            && j.Status != JobStatus.Rejected && j.Status != JobStatus.Offer && j.Status != JobStatus.Withdrawn);
+
+        _appliedCount = _jobs.Count(j => j.Status >= JobStatus.Applied && j.Status != JobStatus.Saved);
+        _respondedCount = _jobs.Count(j => j.Status == JobStatus.RecruiterMessaged
+            || j.Status == JobStatus.Interview || j.Status == JobStatus.Offer);
+        _responseRate = _appliedCount == 0 ? 0 : (int)Math.Round(100.0 * _respondedCount / _appliedCount);
+        _interviewCount = _jobs.Count(j => j.Status == JobStatus.Interview);
+    }
+
+    private IEnumerable<Job> FilteredJobs => _jobs.Where(j =>
+    {
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            if (!j.Company.Contains(s, StringComparison.OrdinalIgnoreCase)
+                && !j.Title.Contains(s, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        if (!string.IsNullOrEmpty(_filterStatus) && Enum.TryParse<JobStatus>(_filterStatus, out var st))
+        {
+            if (j.Status != st) return false;
+        }
+        return true;
+    });
+
+    private async Task QuickAdd()
+    {
+        if (_userId is null || string.IsNullOrWhiteSpace(_qCompany) || string.IsNullOrWhiteSpace(_qTitle))
+            return;
+
+        var job = new Job
+        {
+            UserId = _userId,
+            Company = _qCompany.Trim(),
+            Title = _qTitle.Trim(),
+            Url = string.IsNullOrWhiteSpace(_qUrl) ? null : _qUrl.Trim(),
+            Status = _qStatus,
+            DateApplied = _qStatus >= JobStatus.Applied && _qStatus != JobStatus.Saved
+                ? DateOnly.FromDateTime(DateTime.Today) : null,
+        };
+        Db.Jobs.Add(job);
+        await Db.SaveChangesAsync();
+
+        _qCompany = _qTitle = _qUrl = "";
+        _qStatus = JobStatus.Applied;
+        await LoadJobs();
+        await _quickCompanyRef.FocusAsync();
+    }
+
+    private async Task QuickAddKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await QuickAdd();
+    }
+
+    private async Task OnStatusChanged(Job job, ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<JobStatus>(e.Value?.ToString(), out var newStatus)) return;
+        var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
+        var prev = tracked.Status;
+        tracked.Status = newStatus;
+        tracked.UpdatedAt = DateTime.UtcNow;
+        if (newStatus == JobStatus.Applied && tracked.DateApplied is null)
+            tracked.DateApplied = DateOnly.FromDateTime(DateTime.Today);
+        await Db.SaveChangesAsync();
+        await LoadJobs();
+    }
+
+    private async Task OnFollowUpChanged(Job job, ChangeEventArgs e)
+    {
+        var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
+        if (DateOnly.TryParse(e.Value?.ToString(), out var d))
+            tracked.FollowUpDate = d;
+        else
+            tracked.FollowUpDate = null;
+        tracked.UpdatedAt = DateTime.UtcNow;
+        await Db.SaveChangesAsync();
+        await LoadJobs();
+    }
+
+    private async Task SnoozeFollowUp(Job job, int days)
+    {
+        var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
+        var basis = tracked.FollowUpDate ?? DateOnly.FromDateTime(DateTime.Today);
+        tracked.FollowUpDate = basis.AddDays(days);
+        tracked.UpdatedAt = DateTime.UtcNow;
+        await Db.SaveChangesAsync();
+        await LoadJobs();
+    }
+
+    private void Edit(Job job)
+    {
+        _editingId = job.Id;
+        _editJob = new Job
+        {
+            Id = job.Id,
+            UserId = job.UserId,
+            Company = job.Company,
+            Title = job.Title,
+            Location = job.Location,
+            Salary = job.Salary,
+            Url = job.Url,
+            DateApplied = job.DateApplied,
+            Status = job.Status,
+            RecruiterName = job.RecruiterName,
+            RecruiterEmail = job.RecruiterEmail,
+            FollowUpDate = job.FollowUpDate,
+            InterviewDate = job.InterviewDate,
+            Notes = job.Notes,
+        };
+        _editInterviewDate = job.InterviewDate?.ToDateTime(TimeOnly.MinValue);
+        _editAppliedDate = job.DateApplied?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editJob is null) return;
+        var tracked = await Db.Jobs.FirstAsync(j => j.Id == _editJob.Id && j.UserId == _userId);
+        tracked.Location = _editJob.Location;
+        tracked.Salary = _editJob.Salary;
+        tracked.Url = _editJob.Url;
+        tracked.RecruiterName = _editJob.RecruiterName;
+        tracked.RecruiterEmail = _editJob.RecruiterEmail;
+        tracked.Notes = _editJob.Notes;
+        tracked.InterviewDate = _editInterviewDate.HasValue ? DateOnly.FromDateTime(_editInterviewDate.Value) : null;
+        tracked.DateApplied = _editAppliedDate.HasValue ? DateOnly.FromDateTime(_editAppliedDate.Value) : null;
+        tracked.UpdatedAt = DateTime.UtcNow;
+        await Db.SaveChangesAsync();
+        CancelEdit();
+        await LoadJobs();
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _editJob = null;
+        _editInterviewDate = null;
+        _editAppliedDate = null;
+    }
+
+    private async Task Delete(Job job)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete {job.Company} — {job.Title}?");
+        if (!confirmed) return;
+        var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
+        Db.Jobs.Remove(tracked);
+        await Db.SaveChangesAsync();
+        await LoadJobs();
+    }
+
+    private string RowClass(Job j)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (j.FollowUpDate.HasValue && j.FollowUpDate < today
+            && j.Status != JobStatus.Rejected && j.Status != JobStatus.Offer && j.Status != JobStatus.Withdrawn)
+            return "row-overdue";
+        return "";
+    }
+
+    private static string FormatStatus(JobStatus s) => s switch
+    {
+        JobStatus.RecruiterMessaged => "Recruiter messaged",
+        _ => s.ToString(),
+    };
+
+    public void Dispose() => _selfRef?.Dispose();
+}

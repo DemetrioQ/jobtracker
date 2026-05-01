@@ -1,0 +1,21 @@
+services:
+  jobtracker:
+    image: ghcr.io/demetrioq/jobtracker:latest
+    container_name: jobtracker
+    restart: unless-stopped
+    env_file:
+      - jobtracker.env
+    volumes:
+      - ./data:/app/Data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  web:
+    external: true
