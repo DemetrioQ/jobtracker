@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using jobtracker.Components;
@@ -50,25 +51,33 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
+if (!builder.Environment.IsDevelopment())
+{
+    var keysPath = builder.Configuration["DataProtection:KeysPath"] ?? "/app/Data/keys";
+    Directory.CreateDirectory(keysPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+        .SetApplicationName("jobtracker");
+}
+
 var app = builder.Build();
 
-// Trust X-Forwarded-Proto / X-Forwarded-Host from Caddy so OAuth redirect_uri,
-// cookie Secure flag, and generated URLs all resolve as https://jobs.demetrioq.com
-// instead of http://. Explicit middleware is more reliable here than
-// UseForwardedHeaders, which silently no-ops if KnownProxies/KnownIPNetworks
-// don't match the docker bridge IP.
-app.Use((context, next) =>
+// In production the container is only ever reachable via Caddy over HTTPS,
+// so force scheme=https unconditionally. This guarantees OAuth redirect_uri,
+// cookie Secure flag, and BuildRedirectUri() all match the public origin
+// without depending on Caddy actually sending X-Forwarded-Proto.
+if (!app.Environment.IsDevelopment())
 {
-    if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto) && !string.IsNullOrEmpty(proto))
+    app.Use((context, next) =>
     {
-        context.Request.Scheme = proto.ToString().Split(',')[0].Trim();
-    }
-    if (context.Request.Headers.TryGetValue("X-Forwarded-Host", out var host) && !string.IsNullOrEmpty(host))
-    {
-        context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
-    }
-    return next();
-});
+        context.Request.Scheme = "https";
+        if (context.Request.Headers.TryGetValue("X-Forwarded-Host", out var host) && !string.IsNullOrEmpty(host))
+        {
+            context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
+        }
+        return next();
+    });
+}
 
 if (app.Environment.IsDevelopment())
 {
