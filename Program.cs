@@ -72,10 +72,14 @@ if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(git
     builder.Services.AddOptions<GitHubAuthenticationOptions>(GitHubAuthenticationDefaults.AuthenticationScheme)
         .Configure<OAuthBackchannelHandler>((options, handler) =>
         {
-            options.Backchannel = new HttpClient(handler, disposeHandler: false)
+            var http = new HttpClient(handler, disposeHandler: false)
             {
                 Timeout = TimeSpan.FromSeconds(30)
             };
+            // GitHub's API rejects requests without a User-Agent. Library normally
+            // sets this on its own HttpClient; replacing Backchannel drops it.
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("jobtracker (+https://jobs.demetrioq.com)");
+            options.Backchannel = http;
         });
 }
 
@@ -109,18 +113,21 @@ var app = builder.Build();
 Console.WriteLine($"=== Environment: {app.Environment.EnvironmentName} ===");
 Console.WriteLine($"=== App:PublicUrl: {publicBaseUrl ?? "(unset)"} ===");
 
-if (!app.Environment.IsDevelopment())
+// Trust X-Forwarded-Proto / X-Forwarded-Host from any upstream proxy. We
+// don't gate this on env since local dev requests don't carry these headers
+// anyway. Avoids depending on ASPNETCORE_ENVIRONMENT being set correctly.
+app.Use((context, next) =>
 {
-    app.Use((context, next) =>
+    if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto) && !string.IsNullOrEmpty(proto))
     {
-        context.Request.Scheme = "https";
-        if (context.Request.Headers.TryGetValue("X-Forwarded-Host", out var host) && !string.IsNullOrEmpty(host))
-        {
-            context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
-        }
-        return next();
-    });
-}
+        context.Request.Scheme = proto.ToString().Split(',')[0].Trim();
+    }
+    if (context.Request.Headers.TryGetValue("X-Forwarded-Host", out var host) && !string.IsNullOrEmpty(host))
+    {
+        context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
+    }
+    return next();
+});
 
 if (app.Environment.IsDevelopment())
 {
