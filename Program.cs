@@ -1,9 +1,10 @@
+using System.Text;
 using System.Text.RegularExpressions;
+using AspNet.Security.OAuth.GitHub;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using jobtracker.Components;
 using jobtracker.Components.Account;
 using jobtracker.Data;
@@ -26,9 +27,13 @@ builder.Services.AddAuthentication(options =>
 
 var githubClientId = builder.Configuration["Authentication:GitHub:ClientId"];
 var githubClientSecret = builder.Configuration["Authentication:GitHub:ClientSecret"];
+var publicBaseUrl = builder.Configuration["App:PublicUrl"]?.TrimEnd('/');
+var fixedRedirectUri = !string.IsNullOrWhiteSpace(publicBaseUrl) ? $"{publicBaseUrl}/signin-github" : null;
+
 if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(githubClientSecret))
 {
-    builder.Services.AddSingleton<OAuthBackchannelLogger>();
+    builder.Services.AddSingleton<OAuthBackchannelHandler>();
+
     builder.Services.AddAuthentication().AddGitHub(options =>
     {
         options.ClientId = githubClientId;
@@ -38,21 +43,40 @@ if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(git
         options.Events.OnRedirectToAuthorizationEndpoint = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OAuthDiag");
-            logger.LogWarning("CHALLENGE — Scheme={Scheme} Host={Host} RedirectUri={Uri}",
-                context.Request.Scheme, context.Request.Host.Value, context.RedirectUri);
-            context.Response.Redirect(context.RedirectUri);
+            // Force redirect_uri in the challenge URL to the canonical public URL.
+            // Belt-and-suspenders: even if Request.Scheme/Host happens to be wrong
+            // for the POST that initiated the challenge, the URL we send GitHub
+            // to redirect back to is always https://jobs.demetrioq.com/signin-github.
+            var redirectUri = context.RedirectUri;
+            if (fixedRedirectUri != null)
+            {
+                redirectUri = Regex.Replace(redirectUri, @"redirect_uri=[^&]*",
+                    $"redirect_uri={Uri.EscapeDataString(fixedRedirectUri)}");
+            }
+            logger.LogWarning("CHALLENGE (final URL) — {Uri}", redirectUri);
+            context.Response.Redirect(redirectUri);
             return Task.CompletedTask;
         };
         options.Events.OnRemoteFailure = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OAuthDiag");
-            logger.LogError(context.Failure, "REMOTE FAILURE on callback — Scheme={Scheme} Host={Host} PathBase={PathBase} Path={Path} Query={Query}",
+            logger.LogError(context.Failure, "REMOTE FAILURE — Scheme={Scheme} Host={Host} PathBase={PathBase} Path={Path} Query={Query}",
                 context.Request.Scheme, context.Request.Host.Value, context.Request.PathBase, context.Request.Path, context.Request.QueryString);
             return Task.CompletedTask;
         };
     });
 
-    builder.Services.AddSingleton<IConfigureOptions<AspNet.Security.OAuth.GitHub.GitHubAuthenticationOptions>, ConfigureGitHubBackchannel>();
+    // Use AddOptions<>(scheme).Configure<dep>() so the post-configure runs for the
+    // *named* "GitHub" options instance, not the unnamed default. IConfigureOptions<>
+    // alone silently no-ops for named-options scenarios like authentication schemes.
+    builder.Services.AddOptions<GitHubAuthenticationOptions>(GitHubAuthenticationDefaults.AuthenticationScheme)
+        .Configure<OAuthBackchannelHandler>((options, handler) =>
+        {
+            options.Backchannel = new HttpClient(handler, disposeHandler: false)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+        });
 }
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
@@ -83,11 +107,8 @@ if (!builder.Environment.IsDevelopment())
 var app = builder.Build();
 
 Console.WriteLine($"=== Environment: {app.Environment.EnvironmentName} ===");
+Console.WriteLine($"=== App:PublicUrl: {publicBaseUrl ?? "(unset)"} ===");
 
-// In production the container is only ever reachable via Caddy over HTTPS,
-// so force scheme=https unconditionally. This guarantees OAuth redirect_uri,
-// cookie Secure flag, and BuildRedirectUri() all match the public origin
-// without depending on Caddy actually sending X-Forwarded-Proto.
 if (!app.Environment.IsDevelopment())
 {
     app.Use((context, next) =>
@@ -97,16 +118,6 @@ if (!app.Environment.IsDevelopment())
         {
             context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
         }
-
-        var path = context.Request.Path.Value ?? "";
-        if (path.StartsWith("/signin-github") || path.StartsWith("/Account"))
-        {
-            var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("ReqDiag");
-            logger.LogWarning("REQ {Method} Scheme={Scheme} Host={Host} PathBase={PathBase} Path={Path} Query={Query}",
-                context.Request.Method, context.Request.Scheme, context.Request.Host.Value,
-                context.Request.PathBase, context.Request.Path, context.Request.QueryString);
-        }
-
         return next();
     });
 }
@@ -140,52 +151,60 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
-public class OAuthBackchannelLogger : DelegatingHandler
+public class OAuthBackchannelHandler : DelegatingHandler
 {
-    private readonly ILogger<OAuthBackchannelLogger> _logger;
-    public OAuthBackchannelLogger(ILogger<OAuthBackchannelLogger> logger)
+    private readonly ILogger<OAuthBackchannelHandler> _logger;
+    private readonly string? _fixedRedirectUri;
+
+    public OAuthBackchannelHandler(ILogger<OAuthBackchannelHandler> logger, IConfiguration config)
     {
         _logger = logger;
+        var baseUrl = config["App:PublicUrl"]?.TrimEnd('/');
+        _fixedRedirectUri = !string.IsNullOrWhiteSpace(baseUrl) ? $"{baseUrl}/signin-github" : null;
         InnerHandler = new HttpClientHandler();
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        string body = "";
-        if (request.Content is not null)
+        var isTokenEndpoint = request.RequestUri?.ToString().Contains("/login/oauth/access_token", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (isTokenEndpoint && request.Content is not null)
         {
-            try
+            var body = await request.Content.ReadAsStringAsync(cancellationToken);
+            var redactedBefore = Redact(body);
+            string finalBody = body;
+
+            if (_fixedRedirectUri != null)
             {
-                body = await request.Content.ReadAsStringAsync(cancellationToken);
-                body = Regex.Replace(body, @"client_secret=[^&]+", "client_secret=REDACTED");
+                finalBody = Regex.Replace(body, @"redirect_uri=[^&]*",
+                    $"redirect_uri={Uri.EscapeDataString(_fixedRedirectUri)}");
             }
-            catch { }
+
+            _logger.LogWarning("OAUTH OUTBOUND {Url}", request.RequestUri);
+            _logger.LogWarning("OAUTH BODY before: {Body}", redactedBefore);
+            _logger.LogWarning("OAUTH BODY after:  {Body}", Redact(finalBody));
+
+            var contentType = request.Content.Headers.ContentType?.MediaType ?? "application/x-www-form-urlencoded";
+            request.Content = new StringContent(finalBody, Encoding.UTF8, contentType);
         }
-        _logger.LogWarning("OUTBOUND {Method} {Url} BODY={Body}", request.Method, request.RequestUri, body);
+
         var response = await base.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode || (response.Content?.Headers?.ContentType?.MediaType?.Contains("json") ?? false))
+
+        if (isTokenEndpoint && response.Content != null)
         {
             try
             {
-                var respBody = await response.Content!.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("RESPONSE {Status} BODY={Body}", (int)response.StatusCode, respBody);
-                response.Content = new StringContent(respBody, System.Text.Encoding.UTF8, response.Content.Headers.ContentType?.MediaType ?? "application/json");
+                var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("OAUTH RESPONSE {Status}: {Body}", (int)response.StatusCode, respBody);
+                var mediaType = response.Content.Headers.ContentType?.MediaType ?? "application/json";
+                response.Content = new StringContent(respBody, Encoding.UTF8, mediaType);
             }
             catch { }
         }
+
         return response;
     }
-}
 
-public class ConfigureGitHubBackchannel : IConfigureOptions<AspNet.Security.OAuth.GitHub.GitHubAuthenticationOptions>
-{
-    private readonly OAuthBackchannelLogger _handler;
-    public ConfigureGitHubBackchannel(OAuthBackchannelLogger handler) => _handler = handler;
-    public void Configure(AspNet.Security.OAuth.GitHub.GitHubAuthenticationOptions options)
-    {
-        options.Backchannel = new HttpClient(_handler, disposeHandler: false)
-        {
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-    }
+    private static string Redact(string body) =>
+        Regex.Replace(body, @"client_secret=[^&]+", "client_secret=REDACTED");
 }
