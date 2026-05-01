@@ -32,6 +32,14 @@ if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(git
         options.ClientSecret = githubClientSecret;
         options.Scope.Add("user:email");
         options.SaveTokens = true;
+        options.Events.OnRedirectToAuthorizationEndpoint = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OAuthDiag");
+            logger.LogWarning("GitHub OAuth challenge — Scheme={Scheme} Host={Host} RedirectUri={Uri}",
+                context.Request.Scheme, context.Request.Host.Value, context.RedirectUri);
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
 }
 
