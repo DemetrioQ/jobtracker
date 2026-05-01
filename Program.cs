@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using jobtracker.Components;
@@ -7,13 +6,6 @@ using jobtracker.Components.Account;
 using jobtracker.Data;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownIPNetworks.Clear();
-    options.KnownProxies.Clear();
-});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -60,7 +52,23 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 
 var app = builder.Build();
 
-app.UseForwardedHeaders();
+// Trust X-Forwarded-Proto / X-Forwarded-Host from Caddy so OAuth redirect_uri,
+// cookie Secure flag, and generated URLs all resolve as https://jobs.demetrioq.com
+// instead of http://. Explicit middleware is more reliable here than
+// UseForwardedHeaders, which silently no-ops if KnownProxies/KnownIPNetworks
+// don't match the docker bridge IP.
+app.Use((context, next) =>
+{
+    if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto) && !string.IsNullOrEmpty(proto))
+    {
+        context.Request.Scheme = proto.ToString().Split(',')[0].Trim();
+    }
+    if (context.Request.Headers.TryGetValue("X-Forwarded-Host", out var host) && !string.IsNullOrEmpty(host))
+    {
+        context.Request.Host = new HostString(host.ToString().Split(',')[0].Trim());
+    }
+    return next();
+});
 
 if (app.Environment.IsDevelopment())
 {
