@@ -1,14 +1,18 @@
 @page "/"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IDisposable
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.EntityFrameworkCore
 @using jobtracker.Data
 
 @inject ApplicationDbContext Db
 @inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <PageTitle>Job Tracker</PageTitle>
@@ -43,7 +47,7 @@
         <input @ref="_quickCompanyRef" @bind="_qCompany" @bind:event="oninput" placeholder="Company" class="form-control" @onkeydown="QuickAddKey" />
         <input @bind="_qTitle" @bind:event="oninput" placeholder="Title" class="form-control" @onkeydown="QuickAddKey" />
         <input @bind="_qUrl" @bind:event="oninput" placeholder="URL (optional)" class="form-control" @onkeydown="QuickAddKey" />
-        <select @bind="_qStatus" class="form-select status-select">
+        <select @bind="_qStatus" class="form-select status-select status-@_qStatus.ToString().ToLower()">
             @foreach (var s in Enum.GetValues<JobStatus>())
             {
                 <option value="@s">@FormatStatus(s)</option>
@@ -56,76 +60,133 @@
 </div>
 
 <div class="jobs-toolbar">
-    <input @bind="_search" @bind:event="oninput" placeholder="Search company / title…" class="form-control search-input" />
-    <select @bind="_filterStatus" class="form-select">
+    <input @bind="Search" @bind:event="oninput" placeholder="Search company / title…  (press / )" class="form-control search-input" />
+    <select @bind="FilterStatus" class="form-select">
         <option value="">All statuses</option>
         @foreach (var s in Enum.GetValues<JobStatus>())
         {
             <option value="@s">@FormatStatus(s)</option>
         }
     </select>
-    <span class="muted">@FilteredJobs.Count() of @_jobs.Count</span>
+    <span class="muted">@FilteredAndSortedJobs.Count() of @_jobs.Count</span>
 </div>
 
 <table class="jobs-table">
     <thead>
         <tr>
-            <th>Company</th>
-            <th>Title</th>
+            <th><button class="th-sort @SortState("company")" @onclick='() => Sort("company")'>Company</button></th>
+            <th><button class="th-sort @SortState("title")" @onclick='() => Sort("title")'>Title</button></th>
             <th>Location</th>
-            <th>Applied</th>
-            <th>Status</th>
-            <th>Follow-up</th>
-            <th>Actions</th>
+            <th><button class="th-sort @SortState("applied")" @onclick='() => Sort("applied")'>Applied</button></th>
+            <th><button class="th-sort @SortState("status")" @onclick='() => Sort("status")'>Status</button></th>
+            <th><button class="th-sort @SortState("followup")" @onclick='() => Sort("followup")'>Follow-up</button></th>
+            <th class="th-actions">Actions</th>
         </tr>
     </thead>
     <tbody>
-        @if (!FilteredJobs.Any())
+        @if (!FilteredAndSortedJobs.Any())
         {
-            <tr><td colspan="7" class="empty">No jobs yet — add one above.</td></tr>
+            <tr><td colspan="7" class="empty">@(_jobs.Count == 0 ? "No jobs yet — add one above." : "No matches.")</td></tr>
         }
         else
         {
-            @foreach (var job in FilteredJobs)
+            @foreach (var job in FilteredAndSortedJobs)
             {
-                <tr class="@RowClass(job)">
-                    <td>
-                        @if (!string.IsNullOrWhiteSpace(job.Url))
-                        {
-                            <a href="@job.Url" target="_blank" rel="noopener">@job.Company</a>
-                        }
-                        else
-                        {
-                            @job.Company
-                        }
-                    </td>
-                    <td>@job.Title</td>
-                    <td class="muted">@(job.Location ?? "—")</td>
-                    <td class="muted">@(job.DateApplied?.ToString("MMM d") ?? "—")</td>
-                    <td>
-                        <select class="form-select status-select status-@job.Status.ToString().ToLower()"
-                                value="@job.Status"
-                                @onchange="e => OnStatusChanged(job, e)">
-                            @foreach (var s in Enum.GetValues<JobStatus>())
+                <tr class="@RowClass(job)" @onclick="() => Edit(job)">
+                    <td data-label="Company">
+                        <div class="company-cell">
+                            @if (!string.IsNullOrWhiteSpace(job.Url) && FaviconUrl(job.Url) is { } favicon)
                             {
-                                <option value="@s">@FormatStatus(s)</option>
+                                <img src="@favicon" class="favicon" alt="" loading="lazy" referrerpolicy="no-referrer" />
                             }
-                        </select>
+                            @if (!string.IsNullOrWhiteSpace(job.Url))
+                            {
+                                <a href="@job.Url" target="_blank" rel="noopener" @onclick:stopPropagation>@job.Company</a>
+                            }
+                            else
+                            {
+                                <span>@job.Company</span>
+                            }
+                        </div>
                     </td>
-                    <td>
-                        <input type="date" class="form-control"
+                    <td data-label="Title">@job.Title</td>
+                    <td data-label="Location" class="muted">
+                        <div class="cell-stack">
+                            <div>@(string.IsNullOrWhiteSpace(job.Location) ? "—" : job.Location)</div>
+                            @if (!string.IsNullOrWhiteSpace(job.Salary))
+                            {
+                                <div class="cell-sub">@job.Salary</div>
+                            }
+                        </div>
+                    </td>
+                    <td data-label="Applied" class="muted">@(job.DateApplied?.ToString("MMM d") ?? "—")</td>
+                    <td data-label="Status" @onclick:stopPropagation>
+                        <div class="status-pop @(_statusMenuJobId == job.Id ? "open" : "")">
+                            <button class="status-pill status-@job.Status.ToString().ToLower()"
+                                    @onclick="() => ToggleStatusMenu(job.Id)">
+                                @FormatStatus(job.Status)
+                                <svg viewBox="0 0 24 24" class="caret" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </button>
+                            @if (_statusMenuJobId == job.Id)
+                            {
+                                <ul class="status-menu" role="listbox">
+                                    @foreach (var s in Enum.GetValues<JobStatus>())
+                                    {
+                                        <li>
+                                            <button class="status-option status-@s.ToString().ToLower() @(s == job.Status ? "current" : "")"
+                                                    @onclick="() => SetStatus(job, s)">
+                                                @FormatStatus(s)
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </td>
+                    <td data-label="Follow-up" @onclick:stopPropagation>
+                        <input type="date" class="form-control followup-input"
                                value="@(job.FollowUpDate?.ToString("yyyy-MM-dd"))"
                                @onchange="e => OnFollowUpChanged(job, e)" />
                     </td>
-                    <td class="actions">
-                        <button class="btn btn-sm btn-link" title="Snooze 7 days" @onclick="() => SnoozeFollowUp(job, 7)">+7d</button>
-                        <button class="btn btn-sm btn-link" @onclick="() => Edit(job)">Edit</button>
-                        <button class="btn btn-sm btn-link text-danger" @onclick="() => Delete(job)">Delete</button>
+                    <td class="actions" @onclick:stopPropagation>
+                        <button class="icon-btn" title="Snooze follow-up 7 days" aria-label="Snooze 7 days" @onclick="() => SnoozeFollowUp(job, 7)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="13" r="8" />
+                                <path d="M12 9v4l2.5 1.5" />
+                                <path d="M5 3 2 6" />
+                                <path d="m22 6-3-3" />
+                            </svg>
+                        </button>
+                        <button class="icon-btn" title="Edit" aria-label="Edit" @onclick="() => Edit(job)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                        </button>
+                        @if (_pendingDeleteId == job.Id)
+                        {
+                            <button class="icon-btn icon-btn-danger delete-confirm" title="Click again to confirm delete" aria-label="Confirm delete" @onclick="() => Delete(job)">
+                                Confirm?
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="icon-btn icon-btn-danger" title="Delete" aria-label="Delete" @onclick="() => RequestDelete(job)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M3 6h18" />
+                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                    <path d="M10 11v6M14 11v6" />
+                                </svg>
+                            </button>
+                        }
                     </td>
                 </tr>
                 @if (_editingId == job.Id)
                 {
-                    <tr class="edit-row">
+                    <tr class="edit-row" @onclick:stopPropagation>
                         <td colspan="7">
                             <div class="edit-grid">
                                 <label>Location <input @bind="_editJob!.Location" class="form-control" /></label>
@@ -139,7 +200,7 @@
                             </div>
                             <div class="edit-actions">
                                 <button class="btn btn-primary" @onclick="SaveEdit">Save</button>
-                                <button class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                                <button class="btn btn-secondary" @onclick="CancelEdit">Cancel <span class="kbd">Esc</span></button>
                             </div>
                         </td>
                     </tr>
@@ -160,15 +221,35 @@
     private string _qUrl = "";
     private JobStatus _qStatus = JobStatus.Applied;
 
-    // Search / filter
+    // Search / filter (URL-bound via Search/FilterStatus properties)
     private string _search = "";
     private string _filterStatus = "";
+
+    private string Search
+    {
+        get => _search;
+        set { if (_search != value) { _search = value; UpdateQueryString(); } }
+    }
+
+    private string FilterStatus
+    {
+        get => _filterStatus;
+        set { if (_filterStatus != value) { _filterStatus = value; UpdateQueryString(); } }
+    }
+
+    // Sort
+    private string _sortColumn = "updated";
+    private bool _sortDesc = true;
 
     // Inline edit
     private int? _editingId;
     private Job? _editJob;
     private DateTime? _editInterviewDate;
     private DateTime? _editAppliedDate;
+
+    // Transient UI state
+    private int? _statusMenuJobId;
+    private int? _pendingDeleteId;
 
     // Metrics
     private int _appliedThisWeek;
@@ -186,6 +267,10 @@
         var auth = await AuthProvider.GetAuthenticationStateAsync();
         _userId = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (_userId is null) return;
+
+        ReadQueryString();
+        Nav.LocationChanged += OnLocationChanged;
+
         await LoadJobs();
     }
 
@@ -199,9 +284,27 @@
     }
 
     [JSInvokable]
-    public async Task FocusQuickAdd()
+    public async Task FocusQuickAdd() => await _quickCompanyRef.FocusAsync();
+
+    [JSInvokable]
+    public Task OnEscape()
     {
-        await _quickCompanyRef.FocusAsync();
+        var changed = false;
+        if (_statusMenuJobId is not null) { _statusMenuJobId = null; changed = true; }
+        if (_pendingDeleteId is not null) { _pendingDeleteId = null; changed = true; }
+        if (_editingId is not null) { CancelEdit(); changed = true; }
+        if (changed) StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task CloseTransients()
+    {
+        var changed = false;
+        if (_statusMenuJobId is not null) { _statusMenuJobId = null; changed = true; }
+        if (_pendingDeleteId is not null) { _pendingDeleteId = null; changed = true; }
+        if (changed) StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task LoadJobs()
@@ -209,7 +312,6 @@
         _jobs = await Db.Jobs
             .AsNoTracking()
             .Where(j => j.UserId == _userId)
-            .OrderByDescending(j => j.UpdatedAt)
             .ToListAsync();
         ComputeMetrics();
     }
@@ -232,21 +334,50 @@
         _interviewCount = _jobs.Count(j => j.Status == JobStatus.Interview);
     }
 
-    private IEnumerable<Job> FilteredJobs => _jobs.Where(j =>
+    private IEnumerable<Job> FilteredAndSortedJobs
     {
-        if (!string.IsNullOrWhiteSpace(_search))
+        get
         {
-            var s = _search.Trim();
-            if (!j.Company.Contains(s, StringComparison.OrdinalIgnoreCase)
-                && !j.Title.Contains(s, StringComparison.OrdinalIgnoreCase))
-                return false;
+            IEnumerable<Job> q = _jobs;
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(j => j.Company.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || j.Title.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrEmpty(_filterStatus) && Enum.TryParse<JobStatus>(_filterStatus, out var st))
+            {
+                q = q.Where(j => j.Status == st);
+            }
+
+            return _sortColumn switch
+            {
+                "company"  => _sortDesc ? q.OrderByDescending(j => j.Company)                                  : q.OrderBy(j => j.Company),
+                "title"    => _sortDesc ? q.OrderByDescending(j => j.Title)                                    : q.OrderBy(j => j.Title),
+                "applied"  => _sortDesc ? q.OrderByDescending(j => j.DateApplied ?? DateOnly.MinValue)         : q.OrderBy(j => j.DateApplied ?? DateOnly.MaxValue),
+                "status"   => _sortDesc ? q.OrderByDescending(j => j.Status)                                   : q.OrderBy(j => j.Status),
+                "followup" => _sortDesc ? q.OrderByDescending(j => j.FollowUpDate ?? DateOnly.MinValue)        : q.OrderBy(j => j.FollowUpDate ?? DateOnly.MaxValue),
+                _          => _sortDesc ? q.OrderByDescending(j => j.UpdatedAt)                                : q.OrderBy(j => j.UpdatedAt),
+            };
         }
-        if (!string.IsNullOrEmpty(_filterStatus) && Enum.TryParse<JobStatus>(_filterStatus, out var st))
+    }
+
+    private void Sort(string column)
+    {
+        if (_sortColumn == column)
+            _sortDesc = !_sortDesc;
+        else
         {
-            if (j.Status != st) return false;
+            _sortColumn = column;
+            _sortDesc = column is "applied" or "followup" or "status";
         }
-        return true;
-    });
+    }
+
+    private string SortState(string column)
+    {
+        if (_sortColumn != column) return "";
+        return _sortDesc ? "sort-desc" : "sort-asc";
+    }
 
     private async Task QuickAdd()
     {
@@ -269,6 +400,7 @@
         _qCompany = _qTitle = _qUrl = "";
         _qStatus = JobStatus.Applied;
         await LoadJobs();
+        await Toast($"Added {job.Company}");
         await _quickCompanyRef.FocusAsync();
     }
 
@@ -277,17 +409,25 @@
         if (e.Key == "Enter") await QuickAdd();
     }
 
-    private async Task OnStatusChanged(Job job, ChangeEventArgs e)
+    private void ToggleStatusMenu(int jobId)
     {
-        if (!Enum.TryParse<JobStatus>(e.Value?.ToString(), out var newStatus)) return;
+        _statusMenuJobId = _statusMenuJobId == jobId ? null : jobId;
+        _pendingDeleteId = null;
+    }
+
+    private async Task SetStatus(Job job, JobStatus newStatus)
+    {
+        _statusMenuJobId = null;
+        if (job.Status == newStatus) return;
+
         var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
-        var prev = tracked.Status;
         tracked.Status = newStatus;
         tracked.UpdatedAt = DateTime.UtcNow;
         if (newStatus == JobStatus.Applied && tracked.DateApplied is null)
             tracked.DateApplied = DateOnly.FromDateTime(DateTime.Today);
         await Db.SaveChangesAsync();
         await LoadJobs();
+        await Toast($"Marked {FormatStatus(newStatus)}");
     }
 
     private async Task OnFollowUpChanged(Job job, ChangeEventArgs e)
@@ -300,6 +440,7 @@
         tracked.UpdatedAt = DateTime.UtcNow;
         await Db.SaveChangesAsync();
         await LoadJobs();
+        await Toast(tracked.FollowUpDate is null ? "Follow-up cleared" : $"Follow-up set for {tracked.FollowUpDate:MMM d}");
     }
 
     private async Task SnoozeFollowUp(Job job, int days)
@@ -310,10 +451,16 @@
         tracked.UpdatedAt = DateTime.UtcNow;
         await Db.SaveChangesAsync();
         await LoadJobs();
+        await Toast($"Snoozed {days}d → {tracked.FollowUpDate:MMM d}");
     }
 
     private void Edit(Job job)
     {
+        if (_editingId == job.Id)
+        {
+            CancelEdit();
+            return;
+        }
         _editingId = job.Id;
         _editJob = new Job
         {
@@ -352,6 +499,7 @@
         await Db.SaveChangesAsync();
         CancelEdit();
         await LoadJobs();
+        await Toast("Saved");
     }
 
     private void CancelEdit()
@@ -362,23 +510,36 @@
         _editAppliedDate = null;
     }
 
+    private void RequestDelete(Job job)
+    {
+        _pendingDeleteId = job.Id;
+        _statusMenuJobId = null;
+    }
+
     private async Task Delete(Job job)
     {
-        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete {job.Company} — {job.Title}?");
-        if (!confirmed) return;
+        if (_pendingDeleteId != job.Id)
+        {
+            _pendingDeleteId = job.Id;
+            return;
+        }
         var tracked = await Db.Jobs.FirstAsync(j => j.Id == job.Id && j.UserId == _userId);
         Db.Jobs.Remove(tracked);
         await Db.SaveChangesAsync();
+        _pendingDeleteId = null;
         await LoadJobs();
+        await Toast($"Deleted {job.Company}");
     }
 
     private string RowClass(Job j)
     {
+        var classes = new List<string> { "job-row" };
         var today = DateOnly.FromDateTime(DateTime.Today);
         if (j.FollowUpDate.HasValue && j.FollowUpDate < today
             && j.Status != JobStatus.Rejected && j.Status != JobStatus.Offer && j.Status != JobStatus.Withdrawn)
-            return "row-overdue";
-        return "";
+            classes.Add("row-overdue");
+        if (_editingId == j.Id) classes.Add("row-editing");
+        return string.Join(' ', classes);
     }
 
     private static string FormatStatus(JobStatus s) => s switch
@@ -387,5 +548,53 @@
         _ => s.ToString(),
     };
 
-    public void Dispose() => _selfRef?.Dispose();
+    private static string? FaviconUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        return $"https://www.google.com/s2/favicons?domain={u.Host}&sz=32";
+    }
+
+    // ─── URL <-> state sync ─────────────────────────────────────────
+
+    private void ReadQueryString()
+    {
+        var uri = new Uri(Nav.Uri);
+        var q = QueryHelpers.ParseQuery(uri.Query);
+        _search = q.TryGetValue("q", out var s) ? s.ToString() : "";
+        _filterStatus = q.TryGetValue("status", out var st) ? st.ToString() : "";
+    }
+
+    private void UpdateQueryString()
+    {
+        var url = Nav.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrEmpty(_search) ? null : _search,
+            ["status"] = string.IsNullOrEmpty(_filterStatus) ? null : _filterStatus,
+        });
+        if (!string.Equals(url, Nav.Uri, StringComparison.Ordinal))
+        {
+            Nav.NavigateTo(url, forceLoad: false, replace: true);
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var prevSearch = _search;
+        var prevFilter = _filterStatus;
+        ReadQueryString();
+        if (prevSearch != _search || prevFilter != _filterStatus)
+            InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Toast(string message)
+    {
+        try { await JS.InvokeVoidAsync("jobtracker.toast", message); } catch { /* best-effort */ }
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        _selfRef?.Dispose();
+    }
 }

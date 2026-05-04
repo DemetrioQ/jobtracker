@@ -170,3 +170,39 @@ h1:focus { outline: none; }
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* ─── Toasts ──────────────────────────────────────────────────── */
+
+#jt-toasts {
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.jt-toast {
+    background: #0f172a;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.6rem 0.95rem;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18), 0 4px 8px rgba(15, 23, 42, 0.08);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.jt-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.jt-toast-error {
+    background: #991b1b;
+}
+
