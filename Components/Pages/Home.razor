@@ -45,21 +45,11 @@
 <div class="job-search-bar">
     <span class="search-bar-label">Find jobs</span>
     <input @bind="_searchQuery" @bind:event="oninput"
-           placeholder="Keywords (e.g., senior backend remote)…"
+           placeholder="Keywords (optional) — e.g., senior backend remote"
            class="form-control" />
-    @{
-        var hasQuery = !string.IsNullOrWhiteSpace(_searchQuery);
-    }
     @foreach (var (key, label) in SearchProviders)
     {
-        if (hasQuery)
-        {
-            <a class="search-provider" href="@BuildSearchUrl(key)" target="_blank" rel="noopener noreferrer">@label</a>
-        }
-        else
-        {
-            <button class="search-provider" disabled>@label</button>
-        }
+        <a class="search-provider" href="@BuildSearchUrl(key)" target="_blank" rel="noopener noreferrer">@label</a>
     }
 </div>
 
@@ -500,14 +490,16 @@
 
     private string BuildSearchUrl(string provider)
     {
-        var q = Uri.EscapeDataString((_searchQuery ?? "").Trim());
+        var raw = (_searchQuery ?? "").Trim();
+        var hasQuery = !string.IsNullOrWhiteSpace(raw);
+        var q = Uri.EscapeDataString(raw);
         return provider switch
         {
-            "linkedin"  => $"https://www.linkedin.com/jobs/search/?keywords={q}",
-            "indeed"    => $"https://www.indeed.com/jobs?q={q}",
-            "wellfound" => $"https://wellfound.com/jobs?q={q}",
-            "glassdoor" => $"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={q}",
-            "google"    => $"https://www.google.com/search?q={q}+jobs&ibp=htl;jobs",
+            "linkedin"  => hasQuery ? $"https://www.linkedin.com/jobs/search/?keywords={q}"      : "https://www.linkedin.com/jobs/",
+            "indeed"    => hasQuery ? $"https://www.indeed.com/jobs?q={q}"                       : "https://www.indeed.com/",
+            "wellfound" => hasQuery ? $"https://wellfound.com/jobs?q={q}"                        : "https://wellfound.com/jobs",
+            "glassdoor" => hasQuery ? $"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={q}"   : "https://www.glassdoor.com/Job/index.htm",
+            "google"    => hasQuery ? $"https://www.google.com/search?q={q}+jobs&ibp=htl;jobs"   : "https://www.google.com/search?q=jobs&ibp=htl;jobs",
             _ => "#",
         };
     }
