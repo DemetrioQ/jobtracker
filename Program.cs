@@ -143,6 +143,11 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 
 app.UseAntiforgery();
 
+// UseStaticFiles serves physical files from wwwroot, including the framework
+// assets that ASP.NET copies there during publish (e.g. _framework/blazor.web.js).
+// MapStaticAssets adds optimized fingerprinted endpoints on top. We keep both so
+// blazor.web.js stays reachable even when the optimized manifest is incomplete.
+app.UseStaticFiles();
 app.MapStaticAssets();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapRazorComponents<App>()
