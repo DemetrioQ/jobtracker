@@ -68,9 +68,20 @@ window.jobtracker = (function () {
         }
     }
 
-    function aimSearchLink(link, provider) {
+    function openPastePanel() {
+        var d = document.getElementById('jt-paste-details');
+        if (d) d.open = true;
+    }
+
+    function aimSearchLink(link, provider, ev) {
         var input = document.getElementById('jt-findjobs-q');
-        link.href = findJobsUrl(provider, input ? input.value : '');
+        var q = input ? (input.value || '').trim() : '';
+        if (!q) {
+            if (ev && ev.preventDefault) ev.preventDefault();
+            return false;
+        }
+        link.href = findJobsUrl(provider, q);
+        return true;
     }
 
     return {
@@ -78,5 +89,6 @@ window.jobtracker = (function () {
         toast: toast,
         findJobsUrl: findJobsUrl,
         aimSearchLink: aimSearchLink,
+        openPastePanel: openPastePanel,
     };
 })();

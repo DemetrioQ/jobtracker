@@ -42,18 +42,19 @@
     </div>
 </div>
 
-<div class="job-search-bar">
+<div class="job-search-bar empty">
     <span class="search-bar-label">Find jobs</span>
     <input id="jt-findjobs-q" type="search"
-           placeholder="Keywords (optional) — e.g., senior backend remote"
-           class="form-control" autocomplete="off" />
+           placeholder="Type keywords to enable providers — e.g., senior backend remote"
+           class="form-control" autocomplete="off"
+           oninput="this.parentElement.classList.toggle('empty', this.value.trim().length===0)" />
     @foreach (var (key, label) in SearchProviders)
     {
         <a class="search-provider" href="#"
            target="_blank" rel="noopener noreferrer"
            onmousedown="window.jobtracker.aimSearchLink(this, '@key')"
            onkeydown="if(event.key==='Enter'||event.key===' ')window.jobtracker.aimSearchLink(this,'@key')"
-           onclick="window.jobtracker.aimSearchLink(this, '@key')">@label</a>
+           onclick="return window.jobtracker.aimSearchLink(this, '@key', event)">@label</a>
     }
 </div>
 
@@ -90,30 +91,27 @@
         </div>
     }
 
-    <div class="paste-panel @(_pasteOpen ? "open" : "")">
-        <button class="paste-toggle" type="button" @onclick="() => _pasteOpen = !_pasteOpen" aria-expanded="@_pasteOpen.ToString().ToLowerInvariant()">
+    <details class="paste-panel" id="jt-paste-details">
+        <summary class="paste-toggle">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
             </svg>
             Paste a job posting
             <span class="muted">— extracts company, title, location, salary, URL</span>
-        </button>
-        @if (_pasteOpen)
-        {
-            <textarea @bind="_pasteText" @bind:event="oninput" rows="6"
-                      class="form-control paste-textarea"
-                      placeholder="Paste the full job posting here, then press Parse…"></textarea>
-            <div class="paste-actions">
-                <button class="btn btn-secondary btn-sm" @onclick="ParsePaste" disabled="@string.IsNullOrWhiteSpace(_pasteText)">Parse</button>
-                <button class="btn btn-link btn-sm" @onclick="ClearPaste">Clear</button>
-                @if (_lastExtraction is not null)
-                {
-                    <span class="muted">Parsed ✓ — review fields above and click Add</span>
-                }
-                <a href="/bookmarklet" class="muted paste-bookmarklet-hint">Use the bookmarklet instead →</a>
-            </div>
-        }
-    </div>
+        </summary>
+        <textarea @bind="_pasteText" @bind:event="oninput" rows="6"
+                  class="form-control paste-textarea"
+                  placeholder="Paste the full job posting here, then press Parse…"></textarea>
+        <div class="paste-actions">
+            <button class="btn btn-secondary btn-sm" @onclick="ParsePaste" disabled="@string.IsNullOrWhiteSpace(_pasteText)">Parse</button>
+            <button class="btn btn-link btn-sm" @onclick="ClearPaste">Clear</button>
+            @if (_lastExtraction is not null)
+            {
+                <span class="muted">Parsed ✓ — review fields above and click Add</span>
+            }
+            <a href="/bookmarklet" class="muted paste-bookmarklet-hint">Use the bookmarklet instead →</a>
+        </div>
+    </details>
 </div>
 
 <div class="jobs-toolbar">
@@ -281,9 +279,9 @@
     private string? _qSalary;
 
     // Paste-to-extract
-    private bool _pasteOpen;
     private string _pasteText = "";
     private ExtractedJob? _lastExtraction;
+    private bool _shouldOpenPasteOnFirstRender;
 
     // Search / filter (URL-bound via Search/FilterStatus properties)
     private string _search = "";
@@ -345,6 +343,11 @@
         {
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("jobtracker.bindShortcuts", _selfRef);
+            if (_shouldOpenPasteOnFirstRender)
+            {
+                await JS.InvokeVoidAsync("jobtracker.openPastePanel");
+                _shouldOpenPasteOnFirstRender = false;
+            }
         }
     }
 
@@ -520,7 +523,7 @@
         if (q.TryGetValue("prefill_text", out var t) && !string.IsNullOrWhiteSpace(t))
         {
             _pasteText = t.ToString();
-            _pasteOpen = true;
+            _shouldOpenPasteOnFirstRender = true;
             ParsePaste();
         }
         else

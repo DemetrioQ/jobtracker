@@ -116,7 +116,7 @@
     transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
 }
 
-a.search-provider:hover,
+.job-search-bar:not(.empty) a.search-provider:hover,
 button.search-provider:hover:not(:disabled) {
     background: var(--accent-soft);
     border-color: var(--accent);
@@ -127,6 +127,11 @@ button.search-provider:hover:not(:disabled) {
 .search-provider:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.job-search-bar.empty .search-provider {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* ─── Quick add ───────────────────────────────────────────────── */
@@ -208,28 +213,31 @@ button.search-provider:hover:not(:disabled) {
     padding-top: 0.75rem;
 }
 
-.paste-toggle {
-    background: none;
-    border: none;
-    padding: 0;
+/* Use a native <details>/<summary> so the disclosure works without JS. */
+.paste-panel .paste-toggle {
+    list-style: none;
+    cursor: pointer;
     color: var(--text-muted);
     font-size: 0.85rem;
     font-weight: 500;
-    cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    user-select: none;
 }
 
-.paste-toggle:hover { color: var(--text); }
+.paste-panel .paste-toggle::-webkit-details-marker { display: none; }
+.paste-panel .paste-toggle::marker { content: ""; }
 
-.paste-toggle svg {
+.paste-panel .paste-toggle:hover { color: var(--text); }
+
+.paste-panel .paste-toggle svg {
     width: 0.85rem;
     height: 0.85rem;
     transition: transform 120ms ease;
 }
 
-.paste-panel.open .paste-toggle svg {
+.paste-panel[open] .paste-toggle svg {
     transform: rotate(180deg);
 }
 
