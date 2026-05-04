@@ -101,6 +101,8 @@
 }
 
 .search-provider {
+    display: inline-flex;
+    align-items: center;
     background: var(--surface-2);
     border: 1px solid var(--border);
     color: var(--text);
@@ -109,13 +111,17 @@
     padding: 0.4rem 0.75rem;
     border-radius: 6px;
     cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
     transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
 }
 
-.search-provider:hover:not(:disabled) {
+a.search-provider:hover,
+button.search-provider:hover:not(:disabled) {
     background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent);
+    text-decoration: none;
 }
 
 .search-provider:disabled {

@@ -44,14 +44,23 @@
 
 <div class="job-search-bar">
     <span class="search-bar-label">Find jobs</span>
-    <input @bind="_searchQuery" @bind:event="oninput" @onkeydown="OnSearchKey"
+    <input @bind="_searchQuery" @bind:event="oninput"
            placeholder="Keywords (e.g., senior backend remote)…"
            class="form-control" />
-    <button class="search-provider" @onclick='() => SearchOn("linkedin")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">LinkedIn</button>
-    <button class="search-provider" @onclick='() => SearchOn("indeed")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Indeed</button>
-    <button class="search-provider" @onclick='() => SearchOn("wellfound")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Wellfound</button>
-    <button class="search-provider" @onclick='() => SearchOn("glassdoor")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Glassdoor</button>
-    <button class="search-provider" @onclick='() => SearchOn("google")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Google Jobs</button>
+    @{
+        var hasQuery = !string.IsNullOrWhiteSpace(_searchQuery);
+    }
+    @foreach (var (key, label) in SearchProviders)
+    {
+        if (hasQuery)
+        {
+            <a class="search-provider" href="@BuildSearchUrl(key)" target="_blank" rel="noopener noreferrer">@label</a>
+        }
+        else
+        {
+            <button class="search-provider" disabled>@label</button>
+        }
+    }
 </div>
 
 <div class="quick-add">
@@ -480,27 +489,27 @@
 
     // ─── External job search (deep links) ──────────────────────────
 
-    private async Task SearchOn(string provider)
+    private static readonly (string Key, string Label)[] SearchProviders =
+    [
+        ("linkedin",  "LinkedIn"),
+        ("indeed",    "Indeed"),
+        ("wellfound", "Wellfound"),
+        ("glassdoor", "Glassdoor"),
+        ("google",    "Google Jobs"),
+    ];
+
+    private string BuildSearchUrl(string provider)
     {
-        if (string.IsNullOrWhiteSpace(_searchQuery)) return;
-        var q = Uri.EscapeDataString(_searchQuery.Trim());
-        string? url = provider switch
+        var q = Uri.EscapeDataString((_searchQuery ?? "").Trim());
+        return provider switch
         {
             "linkedin"  => $"https://www.linkedin.com/jobs/search/?keywords={q}",
             "indeed"    => $"https://www.indeed.com/jobs?q={q}",
             "wellfound" => $"https://wellfound.com/jobs?q={q}",
             "glassdoor" => $"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={q}",
             "google"    => $"https://www.google.com/search?q={q}+jobs&ibp=htl;jobs",
-            _ => null,
+            _ => "#",
         };
-        if (url is null) return;
-        await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-    }
-
-    private async Task OnSearchKey(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchQuery))
-            await SearchOn("linkedin");
     }
 
     // ─── Paste-to-extract ──────────────────────────────────────────
