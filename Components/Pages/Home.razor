@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.EntityFrameworkCore
 @using jobtracker.Data
+@using jobtracker.Services
 
 @inject ApplicationDbContext Db
 @inject AuthenticationStateProvider AuthProvider
@@ -41,6 +42,18 @@
     </div>
 </div>
 
+<div class="job-search-bar">
+    <span class="search-bar-label">Find jobs</span>
+    <input @bind="_searchQuery" @bind:event="oninput" @onkeydown="OnSearchKey"
+           placeholder="Keywords (e.g., senior backend remote)…"
+           class="form-control" />
+    <button class="search-provider" @onclick='() => SearchOn("linkedin")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">LinkedIn</button>
+    <button class="search-provider" @onclick='() => SearchOn("indeed")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Indeed</button>
+    <button class="search-provider" @onclick='() => SearchOn("wellfound")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Wellfound</button>
+    <button class="search-provider" @onclick='() => SearchOn("glassdoor")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Glassdoor</button>
+    <button class="search-provider" @onclick='() => SearchOn("google")' disabled="@string.IsNullOrWhiteSpace(_searchQuery)">Google Jobs</button>
+</div>
+
 <div class="quick-add">
     <h3>Quick add <span class="kbd">N</span></h3>
     <div class="quick-add-row">
@@ -56,6 +69,47 @@
         <button class="btn btn-primary" @onclick="QuickAdd" disabled="@(string.IsNullOrWhiteSpace(_qCompany) || string.IsNullOrWhiteSpace(_qTitle))">
             Add
         </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_qLocation) || !string.IsNullOrWhiteSpace(_qSalary))
+    {
+        <div class="extracted-extras">
+            <span class="muted">Will save with:</span>
+            @if (!string.IsNullOrWhiteSpace(_qLocation))
+            {
+                <span class="extra-pill"><strong>Location:</strong> @_qLocation</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(_qSalary))
+            {
+                <span class="extra-pill"><strong>Salary:</strong> @_qSalary</span>
+            }
+            <button class="btn btn-link btn-tiny" @onclick="ClearExtras">clear</button>
+        </div>
+    }
+
+    <div class="paste-panel @(_pasteOpen ? "open" : "")">
+        <button class="paste-toggle" type="button" @onclick="() => _pasteOpen = !_pasteOpen" aria-expanded="@_pasteOpen.ToString().ToLowerInvariant()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+            </svg>
+            Paste a job posting
+            <span class="muted">— extracts company, title, location, salary, URL</span>
+        </button>
+        @if (_pasteOpen)
+        {
+            <textarea @bind="_pasteText" @bind:event="oninput" rows="6"
+                      class="form-control paste-textarea"
+                      placeholder="Paste the full job posting here, then press Parse…"></textarea>
+            <div class="paste-actions">
+                <button class="btn btn-secondary btn-sm" @onclick="ParsePaste" disabled="@string.IsNullOrWhiteSpace(_pasteText)">Parse</button>
+                <button class="btn btn-link btn-sm" @onclick="ClearPaste">Clear</button>
+                @if (_lastExtraction is not null)
+                {
+                    <span class="muted">Parsed ✓ — review fields above and click Add</span>
+                }
+                <a href="/bookmarklet" class="muted paste-bookmarklet-hint">Use the bookmarklet instead →</a>
+            </div>
+        }
     </div>
 </div>
 
@@ -220,6 +274,16 @@
     private string _qTitle = "";
     private string _qUrl = "";
     private JobStatus _qStatus = JobStatus.Applied;
+    private string? _qLocation;
+    private string? _qSalary;
+
+    // External job search
+    private string _searchQuery = "";
+
+    // Paste-to-extract
+    private bool _pasteOpen;
+    private string _pasteText = "";
+    private ExtractedJob? _lastExtraction;
 
     // Search / filter (URL-bound via Search/FilterStatus properties)
     private string _search = "";
@@ -269,6 +333,7 @@
         if (_userId is null) return;
 
         ReadQueryString();
+        ApplyPrefill();
         Nav.LocationChanged += OnLocationChanged;
 
         await LoadJobs();
@@ -393,12 +458,16 @@
             Status = _qStatus,
             DateApplied = _qStatus >= JobStatus.Applied && _qStatus != JobStatus.Saved
                 ? DateOnly.FromDateTime(DateTime.Today) : null,
+            Location = string.IsNullOrWhiteSpace(_qLocation) ? null : _qLocation.Trim(),
+            Salary = string.IsNullOrWhiteSpace(_qSalary) ? null : _qSalary.Trim(),
         };
         Db.Jobs.Add(job);
         await Db.SaveChangesAsync();
 
         _qCompany = _qTitle = _qUrl = "";
         _qStatus = JobStatus.Applied;
+        _qLocation = _qSalary = null;
+        ClearPaste();
         await LoadJobs();
         await Toast($"Added {job.Company}");
         await _quickCompanyRef.FocusAsync();
@@ -407,6 +476,73 @@
     private async Task QuickAddKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await QuickAdd();
+    }
+
+    // ─── External job search (deep links) ──────────────────────────
+
+    private async Task SearchOn(string provider)
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery)) return;
+        var q = Uri.EscapeDataString(_searchQuery.Trim());
+        string? url = provider switch
+        {
+            "linkedin"  => $"https://www.linkedin.com/jobs/search/?keywords={q}",
+            "indeed"    => $"https://www.indeed.com/jobs?q={q}",
+            "wellfound" => $"https://wellfound.com/jobs?q={q}",
+            "glassdoor" => $"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={q}",
+            "google"    => $"https://www.google.com/search?q={q}+jobs&ibp=htl;jobs",
+            _ => null,
+        };
+        if (url is null) return;
+        await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchQuery))
+            await SearchOn("linkedin");
+    }
+
+    // ─── Paste-to-extract ──────────────────────────────────────────
+
+    private void ParsePaste()
+    {
+        _lastExtraction = JobPostingParser.Parse(_pasteText);
+        if (!string.IsNullOrEmpty(_lastExtraction.Company)) _qCompany = _lastExtraction.Company;
+        if (!string.IsNullOrEmpty(_lastExtraction.Title))   _qTitle   = _lastExtraction.Title;
+        if (!string.IsNullOrEmpty(_lastExtraction.Url))     _qUrl     = _lastExtraction.Url;
+        _qLocation = _lastExtraction.Location;
+        _qSalary   = _lastExtraction.Salary;
+    }
+
+    private void ClearPaste()
+    {
+        _pasteText = "";
+        _lastExtraction = null;
+    }
+
+    private void ClearExtras()
+    {
+        _qLocation = null;
+        _qSalary = null;
+    }
+
+    private void ApplyPrefill()
+    {
+        var uri = new Uri(Nav.Uri);
+        var q = QueryHelpers.ParseQuery(uri.Query);
+        if (q.TryGetValue("prefill_text", out var t) && !string.IsNullOrWhiteSpace(t))
+        {
+            _pasteText = t.ToString();
+            _pasteOpen = true;
+            ParsePaste();
+        }
+        else
+        {
+            if (q.TryGetValue("prefill_url", out var u))     _qUrl = u.ToString();
+            if (q.TryGetValue("prefill_title", out var ti))  _qTitle = ti.ToString();
+            if (q.TryGetValue("prefill_company", out var c)) _qCompany = c.ToString();
+        }
     }
 
     private void ToggleStatusMenu(int jobId)

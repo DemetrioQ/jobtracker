@@ -1,0 +1,104 @@
+.bookmarklet-page {
+    max-width: 720px;
+}
+
+.bookmarklet-page .lede {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.bookmarklet-cta {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 1.5rem 0 2rem;
+    flex-wrap: wrap;
+}
+
+.bookmarklet-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: #fff !important;
+    text-decoration: none !important;
+    padding: 0.6rem 1.1rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: grab;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+    user-select: none;
+    transition: transform 100ms ease, box-shadow 100ms ease;
+}
+
+.bookmarklet-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.32);
+}
+
+.bookmarklet-button:active {
+    cursor: grabbing;
+    transform: translateY(0);
+}
+
+.bookmarklet-button svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.how {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.how summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.how summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.how[open] summary {
+    margin-bottom: 0.5rem;
+}
+
+.how ol,
+.how ul {
+    padding-left: 1.4rem;
+    color: var(--text);
+    line-height: 1.55;
+}
+
+.how li {
+    margin-bottom: 0.25rem;
+}
+
+.how code {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.85em;
+}
+
+.how kbd {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.8em;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--text);
+}

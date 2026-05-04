@@ -71,6 +71,58 @@
     font-weight: 500;
 }
 
+/* ─── External job search ────────────────────────────────────── */
+
+.job-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+    box-shadow: var(--shadow-xs);
+    flex-wrap: wrap;
+}
+
+.search-bar-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    padding-right: 0.25rem;
+}
+
+.job-search-bar .form-control {
+    flex: 1 1 240px;
+    min-width: 200px;
+}
+
+.search-provider {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+.search-provider:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.search-provider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ─── Quick add ───────────────────────────────────────────────── */
 
 .quick-add {
@@ -108,6 +160,99 @@
     display: grid;
     grid-template-columns: 1.2fr 1.2fr 1.5fr 1fr auto;
     gap: 0.5rem;
+}
+
+/* ─── Extracted extras (Location/Salary preview) ─────────────── */
+
+.extracted-extras {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+}
+
+.extra-pill {
+    background: var(--accent-soft);
+    color: var(--text);
+    border: 1px solid #c7d2fe;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+}
+
+.extra-pill strong {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 0.25rem;
+}
+
+.btn-tiny {
+    padding: 0 0.25rem;
+    font-size: 0.78rem;
+    line-height: 1;
+}
+
+/* ─── Paste-to-extract panel ─────────────────────────────────── */
+
+.paste-panel {
+    margin-top: 0.85rem;
+    border-top: 1px dashed var(--border);
+    padding-top: 0.75rem;
+}
+
+.paste-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.paste-toggle:hover { color: var(--text); }
+
+.paste-toggle svg {
+    width: 0.85rem;
+    height: 0.85rem;
+    transition: transform 120ms ease;
+}
+
+.paste-panel.open .paste-toggle svg {
+    transform: rotate(180deg);
+}
+
+.paste-textarea {
+    margin-top: 0.65rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.paste-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.paste-actions .muted { font-size: 0.8rem; }
+
+.paste-bookmarklet-hint {
+    margin-left: auto;
+    font-size: 0.8rem;
+}
+
+.btn-sm {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.82rem;
 }
 
 /* ─── Toolbar ─────────────────────────────────────────────────── */

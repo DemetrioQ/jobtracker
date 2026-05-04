@@ -1,0 +1,71 @@
+@page "/bookmarklet"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+
+@inject NavigationManager Nav
+
+<PageTitle>Bookmarklet — Job Tracker</PageTitle>
+
+<div class="bookmarklet-page">
+    <h2>Save jobs from any page</h2>
+    <p class="lede">
+        Drag the button below to your browser's bookmarks bar. Then on any LinkedIn, Indeed, Wellfound, or company-careers
+        page, click it — JobTracker opens in a new tab with the page's company, title, location, and salary already extracted.
+    </p>
+
+    <div class="bookmarklet-cta">
+        <a class="bookmarklet-button" href="@_bookmarklet" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar — clicking it here does nothing useful.');">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+            Save to JobTracker
+        </a>
+        <span class="muted">↑ drag me to your bookmarks bar</span>
+    </div>
+
+    <details class="how">
+        <summary>How does this work?</summary>
+        <ol>
+            <li>The bookmarklet runs JavaScript on the current page.</li>
+            <li>It reads the page's title, URL, OpenGraph metadata, and any text you've selected.</li>
+            <li>It opens this app at <code>/?prefill_text=…</code> with that data.</li>
+            <li>The app's heuristic parser extracts company, title, location, salary, and URL.</li>
+            <li>You review the extracted fields and click Add.</li>
+        </ol>
+        <p class="muted">No data is sent to any third party — the bookmarklet only POSTs to your own JobTracker instance.</p>
+    </details>
+
+    <details class="how">
+        <summary>Bookmarklet not working?</summary>
+        <ul>
+            <li>Some sites (notably LinkedIn job pages) restrict bookmarklets via Content-Security-Policy. If clicking does nothing, copy the page's URL + title manually and use the Paste panel on the dashboard instead.</li>
+            <li>If the bookmarks bar is hidden, press <kbd>Ctrl+Shift+B</kbd> (Windows/Linux) or <kbd>Cmd+Shift+B</kbd> (Mac) to show it.</li>
+        </ul>
+    </details>
+
+    <p><a href="/">← Back to dashboard</a></p>
+</div>
+
+@code {
+    private string _bookmarklet = "javascript:void(0)";
+
+    protected override void OnInitialized()
+    {
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        // Single-line javascript: URI. Drag-to-bookmark requires the entire script
+        // to be one line (browsers are inconsistent about preserving newlines).
+        var script =
+            "(function(){" +
+              "var m=function(n){var e=document.querySelector('meta[property=\"'+n+'\"]')||document.querySelector('meta[name=\"'+n+'\"]');return e?e.content:'';};" +
+              "var sel=window.getSelection().toString().trim();" +
+              "var t=m('og:title')||document.title||'';" +
+              "var d=m('og:description')||m('description')||'';" +
+              "var sn=m('og:site_name')||location.hostname;" +
+              "var text=t+'\\n'+sn+'\\n'+location.href+'\\n'+(sel||d);" +
+              "window.open('" + baseUri + "/?prefill_text='+encodeURIComponent(text),'_blank');" +
+            "})();";
+        _bookmarklet = "javascript:" + script;
+    }
+}
