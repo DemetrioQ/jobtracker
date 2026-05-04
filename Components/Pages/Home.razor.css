@@ -1,68 +1,107 @@
+/* ─── Dashboard metrics ───────────────────────────────────────── */
+
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.875rem;
     margin-bottom: 1.5rem;
 }
 
 .metric-card {
-    background: #fff;
-    border: 1px solid #e3e6ec;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem 1.2rem;
+    box-shadow: var(--shadow-xs);
+    transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    overflow: hidden;
+}
+
+.metric-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    opacity: 0.85;
+}
+
+.metric-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--border-strong);
 }
 
 .metric-card.metric-warn {
-    border-color: #f0c674;
-    background: #fff8e8;
+    border-color: #fcd34d;
+    background: linear-gradient(180deg, #fffbeb 0%, var(--surface) 80%);
+}
+
+.metric-card.metric-warn::before {
+    background: linear-gradient(90deg, #f59e0b, #f97316);
 }
 
 .metric-label {
-    font-size: 0.8rem;
-    color: #6b7280;
+    font-size: 0.72rem;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.4rem;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
 }
 
 .metric-value {
     font-size: 2rem;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
 }
 
 .metric-sub {
-    font-size: 0.8rem;
-    color: #6b7280;
-    margin-top: 0.25rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
 }
 
+.metric-card.metric-warn .metric-sub {
+    color: #b45309;
+    font-weight: 500;
+}
+
+/* ─── Quick add ───────────────────────────────────────────────── */
+
 .quick-add {
-    background: #f8f9fb;
-    border: 1px solid #e3e6ec;
-    border-radius: 10px;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem 1.1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow-xs);
 }
 
 .quick-add h3 {
-    font-size: 0.95rem;
-    margin: 0 0 0.6rem 0;
-    color: #374151;
+    font-size: 0.9rem;
+    margin: 0 0 0.7rem 0;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    font-weight: 600;
 }
 
 .kbd {
-    font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.7rem;
     padding: 1px 6px;
-    background: #fff;
-    border: 1px solid #cbd1d8;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
     border-radius: 4px;
-    color: #6b7280;
+    color: var(--text-muted);
+    font-weight: 500;
 }
 
 .quick-add-row {
@@ -71,90 +110,216 @@
     gap: 0.5rem;
 }
 
+/* ─── Toolbar ─────────────────────────────────────────────────── */
+
 .jobs-toolbar {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.875rem;
 }
 
 .search-input { max-width: 320px; }
 
-.muted { color: #6b7280; font-size: 0.875rem; }
+.muted {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.jobs-toolbar .muted {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ─── Jobs table ──────────────────────────────────────────────── */
 
 .jobs-table {
     width: 100%;
-    background: #fff;
+    background: var(--surface);
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid #e3e6ec;
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     overflow: hidden;
+    box-shadow: var(--shadow-xs);
 }
 
 .jobs-table th {
-    background: #f8f9fb;
+    background: var(--surface-2);
     text-align: left;
-    padding: 0.6rem 0.75rem;
-    font-size: 0.8rem;
+    padding: 0.7rem 0.85rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    color: #4b5563;
-    border-bottom: 1px solid #e3e6ec;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
 }
 
 .jobs-table td {
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #f0f2f6;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid #f1f5f9;
     vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+.jobs-table tbody tr {
+    transition: background-color 100ms ease;
+}
+
+.jobs-table tbody tr:hover {
+    background: #f8fafc;
 }
 
 .jobs-table tr:last-child td { border-bottom: none; }
 
-.row-overdue { background: #fff5f5; }
-.row-overdue td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+.jobs-table a {
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--border-strong);
+}
+
+.jobs-table a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.row-overdue {
+    background: #fff5f5;
+}
+
+.row-overdue:hover {
+    background: #ffecec !important;
+}
+
+.row-overdue td:first-child {
+    box-shadow: inset 3px 0 0 var(--danger);
+}
 
 .empty {
     text-align: center;
-    padding: 2rem;
-    color: #9ca3af;
+    padding: 3rem 1rem;
+    color: var(--text-subtle);
+    font-size: 0.95rem;
 }
+
+/* ─── Status pills (the <select> doubles as a status pill) ────── */
 
 .status-select {
     min-width: 160px;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.3rem 1.75rem 0.3rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    line-height: 1.2;
+    cursor: pointer;
 }
 
-.status-saved          { background: #f3f4f6; }
-.status-applied        { background: #dbeafe; }
-.status-recruitermessaged { background: #fef3c7; }
-.status-interview      { background: #ddd6fe; }
-.status-offer          { background: #d1fae5; }
-.status-rejected       { background: #fee2e2; color: #7f1d1d; }
-.status-withdrawn      { background: #e5e7eb; color: #6b7280; }
+.status-saved {
+    background-color: #f1f5f9;
+    color: #334155;
+    border-color: #e2e8f0;
+}
+
+.status-applied {
+    background-color: #dbeafe;
+    color: #1e40af;
+    border-color: #bfdbfe;
+}
+
+.status-recruitermessaged {
+    background-color: #fef3c7;
+    color: #92400e;
+    border-color: #fde68a;
+}
+
+.status-interview {
+    background-color: #ede9fe;
+    color: #5b21b6;
+    border-color: #ddd6fe;
+}
+
+.status-offer {
+    background-color: #d1fae5;
+    color: #065f46;
+    border-color: #a7f3d0;
+}
+
+.status-rejected {
+    background-color: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.status-withdrawn {
+    background-color: #e5e7eb;
+    color: #4b5563;
+    border-color: #d1d5db;
+}
+
+/* ─── Actions ─────────────────────────────────────────────────── */
 
 .actions { white-space: nowrap; }
-.actions .btn { padding: 2px 6px; font-size: 0.85rem; }
 
-.edit-row td { background: #fafbfc; padding: 1rem; }
+.actions .btn {
+    padding: 3px 8px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.actions .btn:hover {
+    background: var(--surface-2);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.actions .btn.text-danger:hover {
+    background: var(--danger-soft);
+    color: var(--danger) !important;
+}
+
+/* ─── Inline edit row ────────────────────────────────────────── */
+
+.edit-row td {
+    background: var(--surface-2);
+    padding: 1.1rem;
+    border-top: 1px solid var(--border);
+}
 
 .edit-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.75rem;
+    gap: 0.85rem;
 }
 
 .edit-grid label {
     display: flex;
     flex-direction: column;
-    font-size: 0.85rem;
-    color: #4b5563;
-    gap: 0.25rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    gap: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.edit-grid label .form-control {
+    font-size: 0.9rem;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text);
+    font-weight: 400;
 }
 
 .edit-grid label.full { grid-column: 1 / -1; }
 
 .edit-actions {
-    margin-top: 0.75rem;
+    margin-top: 0.875rem;
     display: flex;
     gap: 0.5rem;
 }

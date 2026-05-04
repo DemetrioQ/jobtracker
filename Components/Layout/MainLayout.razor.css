@@ -2,47 +2,65 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
 }
 
 main {
     flex: 1;
+    background: var(--bg);
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background: linear-gradient(180deg, var(--sidebar-bg) 0%, var(--sidebar-bg-2) 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: saturate(140%) blur(8px);
+    -webkit-backdrop-filter: saturate(140%) blur(8px);
+    border-bottom: 1px solid var(--border);
     height: 3.5rem;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    padding: 0 1.75rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
 }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
-    }
+.top-greeting {
+    color: var(--text-muted);
+}
 
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
-    }
+.top-greeting strong {
+    color: var(--text);
+    font-weight: 600;
+}
 
-    .top-row ::deep a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+.brand-mobile {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.brand-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.brand-name {
+    letter-spacing: -0.01em;
+}
 
 @media (max-width: 640.98px) {
     .top-row {
-        justify-content: space-between;
-    }
-
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        margin-left: 0;
+        padding: 0 1rem;
     }
 }
 
@@ -64,24 +82,24 @@ main {
         z-index: 1;
     }
 
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
+    .brand-mobile {
+        display: none;
     }
 
     .top-row, article {
         padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
+        padding-right: 1.75rem !important;
     }
 }
 
 #blazor-error-ui {
     color-scheme: light only;
-    background: lightyellow;
+    background: #fff7d6;
+    border-top: 1px solid #f5d76b;
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.08);
     box-sizing: border-box;
+    color: #78350f;
     display: none;
     left: 0;
     padding: 0.6rem 1.25rem 0.7rem 1.25rem;
