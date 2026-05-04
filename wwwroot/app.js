@@ -54,8 +54,29 @@ window.jobtracker = (function () {
         });
     }
 
+    function findJobsUrl(provider, q) {
+        q = (q || '').trim();
+        var hasQ = q.length > 0;
+        var enc = encodeURIComponent(q);
+        switch (provider) {
+            case 'linkedin':  return hasQ ? 'https://www.linkedin.com/jobs/search/?keywords=' + enc : 'https://www.linkedin.com/jobs/';
+            case 'indeed':    return hasQ ? 'https://www.indeed.com/jobs?q=' + enc : 'https://www.indeed.com/';
+            case 'wellfound': return hasQ ? 'https://wellfound.com/jobs?q=' + enc : 'https://wellfound.com/jobs';
+            case 'glassdoor': return hasQ ? 'https://www.glassdoor.com/Job/jobs.htm?sc.keyword=' + enc : 'https://www.glassdoor.com/Job/index.htm';
+            case 'google':    return hasQ ? 'https://www.google.com/search?q=' + enc + '+jobs&ibp=htl;jobs' : 'https://www.google.com/search?q=jobs&ibp=htl;jobs';
+            default:          return '#';
+        }
+    }
+
+    function aimSearchLink(link, provider) {
+        var input = document.getElementById('jt-findjobs-q');
+        link.href = findJobsUrl(provider, input ? input.value : '');
+    }
+
     return {
         bindShortcuts: bindShortcuts,
         toast: toast,
+        findJobsUrl: findJobsUrl,
+        aimSearchLink: aimSearchLink,
     };
 })();

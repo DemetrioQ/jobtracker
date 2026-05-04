@@ -44,12 +44,16 @@
 
 <div class="job-search-bar">
     <span class="search-bar-label">Find jobs</span>
-    <input @bind="_searchQuery" @bind:event="oninput"
+    <input id="jt-findjobs-q" type="search"
            placeholder="Keywords (optional) — e.g., senior backend remote"
-           class="form-control" />
+           class="form-control" autocomplete="off" />
     @foreach (var (key, label) in SearchProviders)
     {
-        <a class="search-provider" href="@BuildSearchUrl(key)" target="_blank" rel="noopener noreferrer">@label</a>
+        <a class="search-provider" href="#"
+           target="_blank" rel="noopener noreferrer"
+           onmousedown="window.jobtracker.aimSearchLink(this, '@key')"
+           onkeydown="if(event.key==='Enter'||event.key===' ')window.jobtracker.aimSearchLink(this,'@key')"
+           onclick="window.jobtracker.aimSearchLink(this, '@key')">@label</a>
     }
 </div>
 
@@ -276,9 +280,6 @@
     private string? _qLocation;
     private string? _qSalary;
 
-    // External job search
-    private string _searchQuery = "";
-
     // Paste-to-extract
     private bool _pasteOpen;
     private string _pasteText = "";
@@ -477,7 +478,7 @@
         if (e.Key == "Enter") await QuickAdd();
     }
 
-    // ─── External job search (deep links) ──────────────────────────
+    // ─── External job search (deep links — URL built client-side) ──
 
     private static readonly (string Key, string Label)[] SearchProviders =
     [
@@ -487,22 +488,6 @@
         ("glassdoor", "Glassdoor"),
         ("google",    "Google Jobs"),
     ];
-
-    private string BuildSearchUrl(string provider)
-    {
-        var raw = (_searchQuery ?? "").Trim();
-        var hasQuery = !string.IsNullOrWhiteSpace(raw);
-        var q = Uri.EscapeDataString(raw);
-        return provider switch
-        {
-            "linkedin"  => hasQuery ? $"https://www.linkedin.com/jobs/search/?keywords={q}"      : "https://www.linkedin.com/jobs/",
-            "indeed"    => hasQuery ? $"https://www.indeed.com/jobs?q={q}"                       : "https://www.indeed.com/",
-            "wellfound" => hasQuery ? $"https://wellfound.com/jobs?q={q}"                        : "https://wellfound.com/jobs",
-            "glassdoor" => hasQuery ? $"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={q}"   : "https://www.glassdoor.com/Job/index.htm",
-            "google"    => hasQuery ? $"https://www.google.com/search?q={q}+jobs&ibp=htl;jobs"   : "https://www.google.com/search?q=jobs&ibp=htl;jobs",
-            _ => "#",
-        };
-    }
 
     // ─── Paste-to-extract ──────────────────────────────────────────
 
