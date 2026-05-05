@@ -1,0 +1,227 @@
+@page "/discover"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using jobtracker.Data
+
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+
+<PageTitle>Discover jobs</PageTitle>
+
+<div class="discover-header">
+    <h2>Discover jobs</h2>
+    <p class="muted">Aggregated from Indeed, Remotive, and Remote OK. Refreshed in the background.</p>
+</div>
+
+<div class="discover-toolbar">
+    <input @bind="_keyword" @bind:event="oninput" placeholder="Filter by title or tags…" class="form-control filter-input" />
+    <input @bind="_location" @bind:event="oninput" placeholder="Location contains…" class="form-control filter-input" />
+    <label class="filter-toggle">
+        <input type="checkbox" @bind="_remoteOnly" /> Remote only
+    </label>
+    <label class="filter-toggle">
+        <input type="checkbox" @bind="_last24h" /> Last 24h
+    </label>
+    <select @bind="_source" class="form-select source-select">
+        <option value="">All sources</option>
+        <option value="indeed">Indeed</option>
+        <option value="remotive">Remotive</option>
+        <option value="remoteok">Remote OK</option>
+    </select>
+    <span class="muted count">@FilteredListings.Count() of @_listings.Count</span>
+</div>
+
+@if (_loading)
+{
+    <div class="discover-empty">Loading…</div>
+}
+else if (_listings.Count == 0)
+{
+    <div class="discover-empty">
+        <p>No listings yet. The first ingestion runs ~15 seconds after startup, then every <strong>@_intervalMinutes</strong> minutes.</p>
+    </div>
+}
+else if (!FilteredListings.Any())
+{
+    <div class="discover-empty">No matches for these filters.</div>
+}
+else
+{
+    <div class="listing-grid">
+        @foreach (var l in FilteredListings.Take(200))
+        {
+            <article class="listing-card">
+                <div class="listing-head">
+                    <span class="source-badge source-@l.Source">@SourceLabel(l.Source)</span>
+                    <span class="muted posted">@RelativeTime(l.PostedAt)</span>
+                </div>
+                <h3 class="listing-title">@l.Title</h3>
+                <div class="listing-meta">
+                    <span class="company">@l.Company</span>
+                    @if (!string.IsNullOrWhiteSpace(l.Location))
+                    {
+                        <span class="dot">·</span>
+                        <span>@l.Location</span>
+                    }
+                    @if (l.Remote)
+                    {
+                        <span class="remote-pill">Remote</span>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(l.Salary))
+                {
+                    <div class="listing-salary">@l.Salary</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(l.Tags))
+                {
+                    <div class="listing-tags">
+                        @foreach (var t in l.Tags!.Split(',').Take(6))
+                        {
+                            <span class="tag">@t.Trim()</span>
+                        }
+                    </div>
+                }
+                <div class="listing-actions">
+                    <a href="@l.Url" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
+                    @if (_savedListingIds.Contains(l.Id))
+                    {
+                        <button class="btn btn-sm btn-saved" disabled>Saved ✓</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="() => Save(l)">Save</button>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@code {
+    private string? _userId;
+    private List<JobListing> _listings = new();
+    private HashSet<int> _savedListingIds = new();
+    private bool _loading = true;
+    private int _intervalMinutes = 60;
+
+    private string _keyword = "";
+    private string _location = "";
+    private bool _remoteOnly = false;
+    private bool _last24h = false;
+    private string _source = "";
+
+    [Inject] private Microsoft.Extensions.Options.IOptions<jobtracker.Services.JobIngestionOptions> Options { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _intervalMinutes = Options.Value.IntervalMinutes;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _listings = await Db.JobListings
+            .AsNoTracking()
+            .OrderByDescending(l => l.PostedAt)
+            .Take(500)
+            .ToListAsync();
+
+        if (_userId is not null)
+        {
+            // Mark which listings the user has already saved (by URL match) so we
+            // don't let them save the same listing twice.
+            var urls = _listings.Select(l => l.Url).ToList();
+            var existingUrls = await Db.Jobs
+                .Where(j => j.UserId == _userId && j.Url != null && urls.Contains(j.Url!))
+                .Select(j => j.Url!)
+                .ToHashSetAsync();
+            _savedListingIds = _listings.Where(l => existingUrls.Contains(l.Url))
+                                        .Select(l => l.Id)
+                                        .ToHashSet();
+        }
+
+        _loading = false;
+    }
+
+    private IEnumerable<JobListing> FilteredListings
+    {
+        get
+        {
+            IEnumerable<JobListing> q = _listings;
+
+            if (!string.IsNullOrWhiteSpace(_keyword))
+            {
+                var k = _keyword.Trim();
+                q = q.Where(l =>
+                    l.Title.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                    l.Company.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                    (l.Tags?.Contains(k, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (!string.IsNullOrWhiteSpace(_location))
+            {
+                var loc = _location.Trim();
+                q = q.Where(l => l.Location?.Contains(loc, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+            if (_remoteOnly) q = q.Where(l => l.Remote);
+            if (_last24h)
+            {
+                var cutoff = DateTime.UtcNow.AddHours(-24);
+                q = q.Where(l => l.PostedAt >= cutoff);
+            }
+            if (!string.IsNullOrEmpty(_source)) q = q.Where(l => l.Source == _source);
+
+            return q;
+        }
+    }
+
+    private async Task Save(JobListing listing)
+    {
+        if (_userId is null) return;
+
+        var job = new Job
+        {
+            UserId = _userId,
+            Company = listing.Company,
+            Title = listing.Title,
+            Location = listing.Location,
+            Salary = listing.Salary,
+            Url = listing.Url,
+            Status = JobStatus.Saved,
+        };
+        Db.Jobs.Add(job);
+        await Db.SaveChangesAsync();
+        _savedListingIds.Add(listing.Id);
+        await Toast($"Saved {listing.Company} — {listing.Title}");
+    }
+
+    private async Task Toast(string message)
+    {
+        try { await JS.InvokeVoidAsync("jobtracker.toast", message); } catch { }
+    }
+
+    private static string SourceLabel(string s) => s switch
+    {
+        "indeed" => "Indeed",
+        "remotive" => "Remotive",
+        "remoteok" => "Remote OK",
+        _ => s,
+    };
+
+    private static string RelativeTime(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "just now";
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes}m ago";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours}h ago";
+        if (d.TotalDays < 7) return $"{(int)d.TotalDays}d ago";
+        return utc.ToString("MMM d");
+    }
+}

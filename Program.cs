@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using jobtracker.Components;
 using jobtracker.Components.Account;
 using jobtracker.Data;
+using jobtracker.Services;
+using jobtracker.Services.JobSources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -98,6 +100,28 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddDefaultTokenProviders();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+
+// ─── Job ingestion ────────────────────────────────────────────────────────
+builder.Services.Configure<JobIngestionOptions>(
+    builder.Configuration.GetSection(JobIngestionOptions.SectionName));
+
+// Each source gets a named HttpClient with a sensible UA — Indeed, Remotive,
+// and Remote OK all 403 user-agentless requests from Linux containers.
+const string IngestUserAgent = "jobtracker-ingester/1.0 (+https://jobs.demetrioq.com)";
+foreach (var name in new[] { nameof(IndeedRssSource), nameof(RemotiveSource), nameof(RemoteOkSource) })
+{
+    builder.Services.AddHttpClient(name, c =>
+    {
+        c.Timeout = TimeSpan.FromSeconds(20);
+        c.DefaultRequestHeaders.UserAgent.ParseAdd(IngestUserAgent);
+        c.DefaultRequestHeaders.Accept.ParseAdd("application/json, application/rss+xml, application/xml, text/xml");
+    });
+}
+
+builder.Services.AddSingleton<IJobSource, IndeedRssSource>();
+builder.Services.AddSingleton<IJobSource, RemotiveSource>();
+builder.Services.AddSingleton<IJobSource, RemoteOkSource>();
+builder.Services.AddHostedService<JobIngestionService>();
 
 if (!builder.Environment.IsDevelopment())
 {

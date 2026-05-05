@@ -6,6 +6,7 @@ namespace jobtracker.Data;
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<JobListing> JobListings => Set<JobListing>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -20,6 +21,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(j => j.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<JobListing>(b =>
+        {
+            b.HasIndex(l => new { l.Source, l.ExternalId }).IsUnique();
+            b.HasIndex(l => l.PostedAt);
         });
     }
 }
