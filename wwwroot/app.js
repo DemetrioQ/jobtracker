@@ -23,12 +23,30 @@ window.jobtracker = (function () {
         }, 1500);
     }
 
+    let _shortcutCleanup = null;
+
     function bindShortcuts(dotnetRef) {
-        document.addEventListener('keydown', function (e) {
+        // Replace any previous binding so we don't accumulate stale listeners
+        // each time the Home component re-mounts after a navigation.
+        if (_shortcutCleanup) _shortcutCleanup();
+
+        let alive = true;
+
+        function safeInvoke(method) {
+            if (!alive) return;
+            return dotnetRef.invokeMethodAsync(method).catch(() => {
+                // The component was disposed (most likely a navigation away).
+                // Stop listening so we don't keep failing on every event.
+                alive = false;
+                cleanup();
+            });
+        }
+
+        function onKeydown(e) {
             if (e.metaKey || e.ctrlKey || e.altKey) return;
 
             if (e.key === 'Escape') {
-                dotnetRef.invokeMethodAsync('OnEscape');
+                safeInvoke('OnEscape');
                 return;
             }
 
@@ -36,7 +54,7 @@ window.jobtracker = (function () {
 
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
-                dotnetRef.invokeMethodAsync('FocusQuickAdd');
+                safeInvoke('FocusQuickAdd');
             } else if (e.key === '/') {
                 const el = document.querySelector('.search-input');
                 if (el) {
@@ -45,9 +63,9 @@ window.jobtracker = (function () {
                     el.select();
                 }
             }
-        });
+        }
 
-        document.addEventListener('click', function (e) {
+        function onClick(e) {
             // Don't close transients when the click was on something that just
             // *opened* a transient state — otherwise CloseTransients races the
             // Blazor handler that set the state and the button reverts mid-flash.
@@ -56,8 +74,18 @@ window.jobtracker = (function () {
                 e.target.closest('.icon-btn-danger')) {
                 return;
             }
-            dotnetRef.invokeMethodAsync('CloseTransients');
-        });
+            safeInvoke('CloseTransients');
+        }
+
+        function cleanup() {
+            document.removeEventListener('keydown', onKeydown);
+            document.removeEventListener('click', onClick);
+            if (_shortcutCleanup === cleanup) _shortcutCleanup = null;
+        }
+
+        document.addEventListener('keydown', onKeydown);
+        document.addEventListener('click', onClick);
+        _shortcutCleanup = cleanup;
     }
 
     function findJobsUrl(provider, q) {
