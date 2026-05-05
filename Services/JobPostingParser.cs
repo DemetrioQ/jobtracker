@@ -78,17 +78,37 @@ public static partial class JobPostingParser
     // ── Location ─────────────────────────────────────────────────
 
     private static readonly string[] RemoteHints =
-        ["Remote", "Fully Remote", "100% Remote", "Hybrid", "On-site", "Onsite"];
+        ["Fully Remote", "100% Remote", "Remote", "Hybrid", "On-site", "Onsite"];
 
-    [GeneratedRegex(
-        @"\b([A-Z][a-zA-Z\.\-]+(?:\s[A-Z][a-zA-Z\.\-]+)*),\s*([A-Z]{2}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\b")]
-    private static partial Regex CityStateRegex();
+    // US state codes (2-letter) including DC. Used to validate that what
+    // looks like "City, ST" is really a place name and not e.g. "Angular, React".
+    private static readonly HashSet<string> UsStates = new(StringComparer.Ordinal)
+    {
+        "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+        "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+        "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+        "VA","WA","WV","WI","WY","DC",
+    };
+
+    private static readonly string[] CountryNames =
+    {
+        "United States", "USA", "Canada", "United Kingdom", "UK",
+        "Germany", "France", "Spain", "Italy", "Netherlands", "Ireland",
+        "Australia", "Mexico", "Brazil", "Argentina", "India", "Japan",
+        "Singapore", "Switzerland", "Sweden", "Denmark", "Norway", "Finland",
+        "Poland", "Portugal", "Belgium", "Austria",
+    };
+
+    // City + 2-letter state (validated below) or city + comma + country name.
+    [GeneratedRegex(@"\b([A-Z][a-zA-Z\.'\-]+(?:\s+[A-Z][a-zA-Z\.'\-]+){0,3}),\s+([A-Z]{2})\b")]
+    private static partial Regex CityStateUsRegex();
 
     [GeneratedRegex(@"^\s*Location[:\s]+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
     private static partial Regex LocationLabelRegex();
 
     private static string? ExtractLocation(string text)
     {
+        // Explicit "Location: …" label always wins.
         var labelled = LocationLabelRegex().Match(text);
         if (labelled.Success)
         {
@@ -96,22 +116,61 @@ public static partial class JobPostingParser
             if (v.Length is > 0 and < 80) return v;
         }
 
-        var firstLines = string.Join('\n', text.Split('\n').Take(15));
+        // Restrict heuristic search to the first ~600 chars / 8 lines, where
+        // geographic info typically appears in job posts. This avoids picking
+        // up things like "frameworks/libraries such as Angular, React, or Vue.js"
+        // from deep in a responsibilities list.
+        var head = string.Join('\n', text.Split('\n').Take(8));
+        if (head.Length > 600) head = head[..600];
 
-        foreach (var hint in RemoteHints)
+        var cityState = FindValidCityState(head);
+        var remote = FindRemoteHint(head);
+
+        if (cityState is not null && remote is not null)
+            return $"{cityState} ({remote})";
+        if (cityState is not null) return cityState;
+        if (remote is not null) return remote;
+
+        // Country names alone, e.g. "United Kingdom" appearing standalone.
+        foreach (var country in CountryNames)
         {
-            var idx = firstLines.IndexOf(hint, StringComparison.OrdinalIgnoreCase);
+            var idx = head.IndexOf(country, StringComparison.OrdinalIgnoreCase);
             if (idx >= 0)
             {
-                var cityState = CityStateRegex().Match(firstLines);
-                if (cityState.Success)
-                    return $"{cityState.Value} ({hint})";
-                return hint;
+                // Only accept if it's a standalone token, not part of a sentence
+                // about the company being a "United States-based corporation".
+                var before = idx == 0 ? ' ' : head[idx - 1];
+                if (!char.IsLetter(before)) return country;
             }
         }
 
-        var cs = CityStateRegex().Match(firstLines);
-        return cs.Success ? cs.Value : null;
+        return null;
+    }
+
+    private static string? FindValidCityState(string head)
+    {
+        foreach (Match m in CityStateUsRegex().Matches(head))
+        {
+            var state = m.Groups[2].Value;
+            if (UsStates.Contains(state)) return m.Value;
+        }
+        return null;
+    }
+
+    private static string? FindRemoteHint(string head)
+    {
+        foreach (var hint in RemoteHints)
+        {
+            var idx = head.IndexOf(hint, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+            // Token boundaries — don't match inside another word.
+            var before = idx == 0 ? ' ' : head[idx - 1];
+            var afterIdx = idx + hint.Length;
+            var after = afterIdx >= head.Length ? ' ' : head[afterIdx];
+            if (char.IsLetter(before) || char.IsLetter(after)) continue;
+            return hint;
+        }
+        return null;
     }
 
     // ── Title + Company ─────────────────────────────────────────
@@ -180,7 +239,20 @@ public static partial class JobPostingParser
             if (atMatch.Success) company = Clean(atMatch.Groups[1].Value);
         }
 
-        // Fallback: if no title found, take the first line that "looks like" a title.
+        // Fallback: prefer lines with title-affinity words (Engineer / Developer / …),
+        // and only fall back to "first line that looks like a title" if none match.
+        if (title is null)
+        {
+            foreach (var line in lines)
+            {
+                if (LooksLikeTitle(line) && HasTitleAffinity(line))
+                {
+                    title = Clean(line);
+                    break;
+                }
+            }
+        }
+
         if (title is null)
         {
             foreach (var line in lines)
@@ -196,14 +268,58 @@ public static partial class JobPostingParser
         return (title, company);
     }
 
+    // Common section headings that get pasted along with the job body but are
+    // not actually the job title. These should never be returned as a Title.
+    private static readonly string[] HeaderPhrases =
+    {
+        "about the job", "about the role", "about us", "about the company",
+        "job description", "job summary", "summary", "overview",
+        "the role", "your role", "the position", "position summary",
+        "key responsibilities", "responsibilities", "duties",
+        "what you'll do", "what you will do", "what we're looking for",
+        "qualifications", "requirements", "preferred qualifications",
+        "minimum qualifications", "skills", "experience", "compensation",
+        "benefits", "perks", "why join us", "our team",
+    };
+
+    // Words commonly found in real job titles. A line containing one is more
+    // likely to be the real title than a generic section header.
+    private static readonly string[] TitleAffinity =
+    {
+        "Engineer", "Developer", "Architect", "Manager", "Lead", "Director",
+        "Analyst", "Consultant", "Designer", "Specialist", "Officer", "Scientist",
+        "Administrator", "Coordinator", "Strategist", "Researcher", "Programmer",
+        "DevOps", "SRE", "Full Stack", "Frontend", "Backend", "Front-end", "Back-end",
+        "Product", "Project", "Software", "Data", "Machine Learning", "ML",
+    };
+
     private static bool LooksLikeTitle(string line)
     {
         if (line.Length is < 3 or > 120) return false;
         if (line.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return false;
-        if (line.Count(char.IsDigit) > line.Length / 3) return false; // mostly numbers? no
-        // Should contain at least one capital and at least one lowercase letter
+        if (line.Count(char.IsDigit) > line.Length / 3) return false;
         if (!line.Any(char.IsUpper) || !line.Any(char.IsLower)) return false;
+
+        var lower = line.ToLowerInvariant().TrimEnd(':', '.', ' ', '–', '—', '-');
+        foreach (var h in HeaderPhrases)
+        {
+            if (lower == h || lower.StartsWith(h + ":") || lower.StartsWith(h + " ")) return false;
+        }
+
+        // Reject lines that read like sentences (lots of common stop-words).
+        var wordCount = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        if (wordCount > 14) return false;
+
         return true;
+    }
+
+    private static bool HasTitleAffinity(string line)
+    {
+        foreach (var w in TitleAffinity)
+        {
+            if (line.Contains(w, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     private static string Clean(string s)

@@ -48,9 +48,15 @@ window.jobtracker = (function () {
         });
 
         document.addEventListener('click', function (e) {
-            if (!e.target.closest('.status-pop') && !e.target.closest('.delete-confirm')) {
-                dotnetRef.invokeMethodAsync('CloseTransients');
+            // Don't close transients when the click was on something that just
+            // *opened* a transient state — otherwise CloseTransients races the
+            // Blazor handler that set the state and the button reverts mid-flash.
+            if (e.target.closest('.status-pop') ||
+                e.target.closest('.delete-confirm') ||
+                e.target.closest('.icon-btn-danger')) {
+                return;
             }
+            dotnetRef.invokeMethodAsync('CloseTransients');
         });
     }
 
