@@ -105,10 +105,14 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 builder.Services.Configure<JobIngestionOptions>(
     builder.Configuration.GetSection(JobIngestionOptions.SectionName));
 
-// Each source gets a named HttpClient with a sensible UA — Indeed, Remotive,
-// and Remote OK all 403 user-agentless requests from Linux containers.
+// Each source gets a named HttpClient with a sensible UA — most aggregators
+// 403 user-agentless requests from Linux containers.
 const string IngestUserAgent = "jobtracker-ingester/1.0 (+https://jobs.demetrioq.com)";
-foreach (var name in new[] { nameof(IndeedRssSource), nameof(RemotiveSource), nameof(RemoteOkSource) })
+foreach (var name in new[]
+{
+    nameof(IndeedRssSource), nameof(RemotiveSource), nameof(RemoteOkSource),
+    nameof(ArbeitnowSource), nameof(AdzunaSource),
+})
 {
     builder.Services.AddHttpClient(name, c =>
     {
@@ -121,6 +125,8 @@ foreach (var name in new[] { nameof(IndeedRssSource), nameof(RemotiveSource), na
 builder.Services.AddSingleton<IJobSource, IndeedRssSource>();
 builder.Services.AddSingleton<IJobSource, RemotiveSource>();
 builder.Services.AddSingleton<IJobSource, RemoteOkSource>();
+builder.Services.AddSingleton<IJobSource, ArbeitnowSource>();
+builder.Services.AddSingleton<IJobSource, AdzunaSource>();
 builder.Services.AddHostedService<JobIngestionService>();
 
 if (!builder.Environment.IsDevelopment())

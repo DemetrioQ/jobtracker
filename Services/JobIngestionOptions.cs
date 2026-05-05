@@ -12,6 +12,7 @@ public sealed class JobIngestionOptions
 
     public IndeedOptions Indeed { get; set; } = new();
     public RemotiveOptions Remotive { get; set; } = new();
+    public AdzunaOptions Adzuna { get; set; } = new();
 
     public sealed class IndeedOptions
     {
@@ -23,5 +24,14 @@ public sealed class JobIngestionOptions
     {
         public string Category { get; set; } = "software-dev";
         public string[] SearchTerms { get; set; } = Array.Empty<string>();
+    }
+
+    public sealed class AdzunaOptions
+    {
+        public string AppId { get; set; } = "";
+        public string AppKey { get; set; } = "";
+        public string[] Countries { get; set; } = Array.Empty<string>();
+        public string[] Queries { get; set; } = Array.Empty<string>();
+        public int MaxDaysOld { get; set; } = 1;
     }
 }

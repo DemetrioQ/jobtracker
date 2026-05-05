@@ -34,20 +34,47 @@ public sealed class IndeedRssSource(
             {
                 var url = BuildUrl(query, loc);
                 XDocument? doc = null;
-                try
+
+                using (var resp = await SafeGetAsync(http, url, ct))
                 {
-                    using var resp = await http.GetAsync(url, ct);
-                    resp.EnsureSuccessStatusCode();
-                    var xml = await resp.Content.ReadAsStringAsync(ct);
-                    doc = XDocument.Parse(xml);
+                    if (resp is null) continue;
+
+                    var contentType = resp.Content.Headers.ContentType?.MediaType ?? "(none)";
+                    string body = "";
+                    try { body = await resp.Content.ReadAsStringAsync(ct); }
+                    catch (Exception ex) { logger.LogWarning(ex, "Indeed: read body failed for {Url}", url); }
+
+                    logger.LogInformation(
+                        "Indeed RSS {Url} -> status={Status} contentType={Ct} bytes={Len}",
+                        url, (int)resp.StatusCode, contentType, body.Length);
+
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        logger.LogWarning("Indeed RSS non-success head: {Head}", Head(body));
+                        continue;
+                    }
+
+                    var trimmed = body.TrimStart();
+                    if (string.IsNullOrWhiteSpace(trimmed) ||
+                        (!trimmed.StartsWith("<?xml") && !trimmed.StartsWith("<rss")))
+                    {
+                        logger.LogWarning("Indeed RSS returned non-XML body — likely a bot/HTML challenge. Head: {Head}", Head(body));
+                        continue;
+                    }
+
+                    try { doc = XDocument.Parse(body); }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Indeed RSS XML parse failed. Head: {Head}", Head(body));
+                        continue;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Indeed RSS fetch failed for {Url}", url);
-                }
+
                 if (doc is null) continue;
 
-                foreach (var item in doc.Descendants("item"))
+                var items = doc.Descendants("item").ToList();
+                logger.LogInformation("Indeed RSS items={Count} for q='{Query}' l='{Loc}'", items.Count, query, loc);
+                foreach (var item in items)
                 {
                     var listing = TryParseItem(item, query, loc);
                     if (listing is not null) yield return listing;
@@ -126,4 +153,17 @@ public sealed class IndeedRssSource(
         if (string.IsNullOrEmpty(html)) return html;
         return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ").Trim();
     }
+
+    private async Task<HttpResponseMessage?> SafeGetAsync(HttpClient http, string url, CancellationToken ct)
+    {
+        try { return await http.GetAsync(url, ct); }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Indeed RSS fetch failed for {Url}", url);
+            return null;
+        }
+    }
+
+    private static string Head(string s, int n = 240)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length <= n ? s : s[..n] + "…");
 }
